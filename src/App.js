@@ -370,8 +370,11 @@ export default function App() {
                 6자리 인증번호가 발송되었습니다.
               </div>
 
-              {/* 인증번호 박스 6칸 */}
-              <div style={{ display: "flex", gap: 8, justifyContent: "center", marginBottom: 8 }}>
+              {/* 인증번호 박스 6칸 — 탭하면 키패드 자동 열림 */}
+              <div
+                onClick={() => document.getElementById("verify-input")?.focus()}
+                style={{ display: "flex", gap: 8, justifyContent: "center", marginBottom: 8, cursor: "pointer" }}
+              >
                 {[0,1,2,3,4,5].map((i) => (
                   <div key={i} style={{
                     width: 44, height: 52, borderRadius: 10,
@@ -390,17 +393,20 @@ export default function App() {
                 ))}
               </div>
 
-              {/* 숨겨진 실제 입력 필드 */}
+              {/* 실제 입력 필드 — 보이지 않지만 키패드 열림 */}
               <input
-                type="number"
+                id="verify-input"
+                type="tel"
+                inputMode="numeric"
+                pattern="[0-9]*"
                 maxLength={6}
                 value={verifyCode}
+                autoComplete="one-time-code"
                 onChange={(e) => {
-                  const v = e.target.value.slice(0, 6);
+                  const v = e.target.value.replace(/\D/g, "").slice(0, 6);
                   setVerifyCode(v);
                   setVerifyError("");
                   if (v.length === 6) {
-                    // 자동 인증 시도
                     setTimeout(() => {
                       if (v !== "123456") {
                         setVerifyError("인증번호가 일치하지 않습니다.");
@@ -423,20 +429,11 @@ export default function App() {
                   }
                 }}
                 style={{
-                  position: "absolute", opacity: 0, width: 1, height: 1,
-                  pointerEvents: "none",
+                  position: "fixed", top: -200, left: -200,
+                  width: 1, height: 1, opacity: 0,
+                  fontSize: 16,
                 }}
               />
-
-              {/* 키패드 대용 — 탭하면 input 포커스 */}
-              <div
-                onClick={() => document.querySelector('input[type="number"]')?.focus()}
-                style={{
-                  textAlign: "center", fontSize: 12, color: "#888",
-                  marginBottom: 12, cursor: "pointer",
-                  padding: "8px", border: "1px dashed #E2E8F0", borderRadius: 8,
-                }}
-              >📱 위 칸을 탭하여 키패드 열기</div>
 
               {/* 에러 */}
               {verifyError && (
