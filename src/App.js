@@ -1,4 +1,11 @@
 import { useState } from "react";
+import { createClient } from "@supabase/supabase-js";
+
+// ── Supabase 연결 설정 ──────────────────────────────────
+const supabase = createClient(
+  "https://tutmzebsvcslrjallesi.supabase.co",
+  "sb_publishable_e3q0H3KfAUYU7ZZXqqB4Aw_ScrLx41m"
+);
 
 const SCREENS = {
   LOGIN: "login",
@@ -212,14 +219,6 @@ export default function App() {
   // ── 화면 00: 로그인 ──────────────────────────────────
   if (screen === SCREENS.LOGIN) {
 
-    // DB 연동 전 더미 사용자 데이터 (전화번호 → 역할 매핑)
-    const DUMMY_USERS = {
-      "01012345678": { role: "worker",     name: "김철수",   team: "충청1팀", workType: "유지보수" },
-      "01023456789": { role: "supervisor", name: "김현당",   team: "충청1팀", position: "팀장" },
-      "01056781234": { role: "supervisor", name: "최유지",   team: "유지보수팀", position: "과장" },
-      "01023456780": { role: "situation",  name: "이인판",   team: "안전관리팀", position: "차장" },
-    };
-
     const formatPhone = (v) => {
       const digits = v.replace(/\D/g, "").slice(0, 11);
       if (digits.length <= 3) return digits;
@@ -232,13 +231,21 @@ export default function App() {
       setPhoneError("");
     };
 
-    const handleSendCode = () => {
+    const handleSendCode = async () => {
       const digits = phoneNum.replace(/\D/g, "");
       if (digits.length !== 11) {
         setPhoneError("올바른 핸드폰 번호를 입력해주세요.");
         return;
       }
-      if (!DUMMY_USERS[digits]) {
+      // Supabase DB에서 번호 조회
+      const { data, error } = await supabase
+        .from("users")
+        .select("*")
+        .eq("phone", digits)
+        .eq("is_active", true)
+        .single();
+
+      if (error || !data) {
         setPhoneError("등록되지 않은 번호입니다. 관리자에게 문의하세요.");
         return;
       }
@@ -248,16 +255,26 @@ export default function App() {
       setVerifyCode("");
     };
 
-    const handleVerify = () => {
-      // 프로토타입: 123456 고정 인증번호
+    const handleVerify = async () => {
+      // 프로토타입: 123456 고정 인증번호 (SMS 연동 후 교체)
       if (verifyCode !== "123456") {
         setVerifyError("인증번호가 일치하지 않습니다. 다시 확인해주세요.");
         return;
       }
       const digits = phoneNum.replace(/\D/g, "");
-      const user = DUMMY_USERS[digits];
+      // DB에서 사용자 정보 다시 조회
+      const { data: user } = await supabase
+        .from("users")
+        .select("*")
+        .eq("phone", digits)
+        .single();
+
+      if (!user) {
+        setVerifyError("사용자 정보를 불러올 수 없습니다.");
+        return;
+      }
       setUserRole(user.role);
-      if (user.workType) setWorkType(user.workType);
+      if (user.work_type) setWorkType(user.work_type);
       if (user.role === "worker")     go(SCREENS.MAIN);
       if (user.role === "supervisor") go(SCREENS.SUPERVISOR);
       if (user.role === "situation")  go(SCREENS.SITUATION_ROOM);
@@ -407,20 +424,19 @@ export default function App() {
                   setVerifyCode(v);
                   setVerifyError("");
                   if (v.length === 6) {
-                    setTimeout(() => {
+                    setTimeout(async () => {
                       if (v !== "123456") {
                         setVerifyError("인증번호가 일치하지 않습니다.");
                       } else {
                         const digits = phoneNum.replace(/\D/g, "");
-                        const DUMMY_USERS = {
-                          "01012345678": { role: "worker",     workType: "유지보수" },
-                          "01023456789": { role: "supervisor", workType: null },
-                          "01056781234": { role: "supervisor", workType: null },
-                          "01023456780": { role: "situation",  workType: null },
-                        };
-                        const user = DUMMY_USERS[digits];
+                        const { data: user } = await supabase
+                          .from("users")
+                          .select("*")
+                          .eq("phone", digits)
+                          .single();
+                        if (!user) { setVerifyError("사용자 정보를 불러올 수 없습니다."); return; }
                         setUserRole(user.role);
-                        if (user.workType) setWorkType(user.workType);
+                        if (user.work_type) setWorkType(user.work_type);
                         if (user.role === "worker")     go(SCREENS.MAIN);
                         if (user.role === "supervisor") go(SCREENS.SUPERVISOR);
                         if (user.role === "situation")  go(SCREENS.SITUATION_ROOM);
