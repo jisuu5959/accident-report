@@ -98,7 +98,18 @@ export default function App() {
   const [verifyError, setVerifyError] = useState("");
   const [codeSent, setCodeSent] = useState(false);
   const [selectedType, setSelectedType] = useState(null);
-  const [accidentDate] = useState("2024.06.25 (화) 14:35");
+  const [accidentDate] = useState(() => {
+    const d = new Date();
+    const days = ["일","월","화","수","목","금","토"];
+    return `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,"0")}.${String(d.getDate()).padStart(2,"0")} (${days[d.getDay()]}) ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+  });
+  // 위치 관련 state
+  const [gpsLoading, setGpsLoading] = useState(false);
+  const [gpsAddress, setGpsAddress] = useState("");
+  const [gpsCoords, setGpsCoords] = useState(null);
+  const [gpsError, setGpsError] = useState("");
+  const [showAddressSearch, setShowAddressSearch] = useState(false);
+  const [addressSearchQuery, setAddressSearchQuery] = useState("");
   const [accidentContent, setAccidentContent] = useState("옥외 배관 점검 중 난간 파손으로 추락");
   const [hasInjured, setHasInjured] = useState(true);
   const [injuredName, setInjuredName] = useState("");
@@ -629,6 +640,78 @@ export default function App() {
 
   // ── 화면 03: 사고 위치 확인 ──────────────────────────
   if (screen === SCREENS.LOCATION) {
+
+    const KAKAO_KEY = "79643dd3b407eebf29d5139a7c5543de";
+
+    // GPS → 카카오 좌표→주소 변환
+    const getGpsLocation = () => {
+      setGpsLoading(true);
+      setGpsError("");
+      setShowAddressSearch(false);
+      if (!navigator.geolocation) {
+        setGpsError("이 기기에서 위치 서비스를 지원하지 않습니다.");
+        setGpsLoading(false);
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          setGpsCoords({ lat, lng });
+          try {
+            const res = await fetch(
+              `https://dapi.kakao.com/v2/local/geo/coord2address.json?x=${lng}&y=${lat}`,
+              { headers: { Authorization: `KakaoAK ${KAKAO_KEY}` } }
+            );
+            const data = await res.json();
+            if (data.documents && data.documents.length > 0) {
+              const addr = data.documents[0].address;
+              setGpsAddress(addr.address_name);
+            } else {
+              setGpsAddress(`위도 ${lat.toFixed(4)}, 경도 ${lng.toFixed(4)}`);
+            }
+          } catch {
+            setGpsAddress(`위도 ${lat.toFixed(4)}, 경도 ${lng.toFixed(4)}`);
+          }
+          setGpsLoading(false);
+        },
+        (err) => {
+          setGpsError("위치 접근이 거부되었습니다. 직접 주소를 입력해주세요.");
+          setGpsLoading(false);
+          setShowAddressSearch(true);
+        },
+        { enableHighAccuracy: true, timeout: 10000 }
+      );
+    };
+
+    // 주소 검색 (카카오 키워드 검색)
+    const searchAddress = async () => {
+      if (!addressSearchQuery.trim()) return;
+      try {
+        const res = await fetch(
+          `https://dapi.kakao.com/v2/local/search/address.json?query=${encodeURIComponent(addressSearchQuery)}`,
+          { headers: { Authorization: `KakaoAK ${KAKAO_KEY}` } }
+        );
+        const data = await res.json();
+        if (data.documents && data.documents.length > 0) {
+          const doc = data.documents[0];
+          setGpsAddress(doc.address_name || doc.road_address_name);
+          setGpsCoords({ lat: parseFloat(doc.y), lng: parseFloat(doc.x) });
+          setShowAddressSearch(false);
+          setAddressSearchQuery("");
+        } else {
+          setGpsError("검색 결과가 없습니다. 다시 입력해주세요.");
+        }
+      } catch {
+        setGpsError("주소 검색 중 오류가 발생했습니다.");
+      }
+    };
+
+    // 화면 진입 시 자동 GPS
+    if (!gpsAddress && !gpsLoading && !gpsError) {
+      getGpsLocation();
+    }
+
     return (
       <div style={styles.phone}>
         <div style={styles.statusBar}><span>9:41</span><span>📶 🔋</span></div>
@@ -639,52 +722,133 @@ export default function App() {
         </div>
         <div style={styles.body}>
           <p style={{ fontSize: 14, color: "#666", marginBottom: 16 }}>GPS가 자동으로 위치를 확인합니다.</p>
+
           {/* 지도 영역 */}
           <div style={{
-            background: "#E8F0E8",
-            borderRadius: 12,
-            height: 200,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            position: "relative",
-            marginBottom: 16,
-            overflow: "hidden",
+            background: "#E8F0E8", borderRadius: 12, height: 180,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            position: "relative", marginBottom: 16, overflow: "hidden",
           }}>
             <div style={{
-              position: "absolute",
-              inset: 0,
+              position: "absolute", inset: 0,
               background: "repeating-linear-gradient(0deg,transparent,transparent 20px,rgba(0,0,0,0.04) 20px,rgba(0,0,0,0.04) 21px), repeating-linear-gradient(90deg,transparent,transparent 20px,rgba(0,0,0,0.04) 20px,rgba(0,0,0,0.04) 21px)",
             }} />
-            <div style={{ fontSize: 36, zIndex: 1 }}>📍</div>
+            {gpsLoading ? (
+              <div style={{ zIndex: 1, textAlign: "center" }}>
+                <div style={{ fontSize: 28, marginBottom: 8 }}>📡</div>
+                <div style={{ fontSize: 13, color: "#555", fontWeight: 600 }}>위치 확인 중...</div>
+              </div>
+            ) : (
+              <div style={{ fontSize: 40, zIndex: 1 }}>📍</div>
+            )}
           </div>
-          {/* 위치 정보 */}
-          <div style={{ textAlign: "center", marginBottom: 16 }}>
-            <div style={{ fontSize: 16, fontWeight: 700, color: "#111" }}>충청남도 서산시 대산읍</div>
-            <div style={{ fontSize: 13, color: "#888", marginTop: 4 }}>위도 36.7842  경도 126.4321</div>
-          </div>
-          {/* 위치 확인 체크 */}
-          <div style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            background: "#F0FFF4",
-            border: "1px solid #9AE6B4",
-            borderRadius: 8,
-            padding: "10px 14px",
-            marginBottom: 24,
-          }}>
-            <span style={{ color: "#2F855A", fontSize: 16 }}>✓</span>
-            <span style={{ fontSize: 14, color: "#2F855A", fontWeight: 600 }}>위치 정보가 올바릅니까?</span>
-          </div>
-          {/* 버튼 2개 */}
+
+          {/* 위치 정보 표시 */}
+          {gpsLoading ? (
+            <div style={{ textAlign: "center", marginBottom: 16, color: "#888", fontSize: 13 }}>
+              GPS 신호를 수신하고 있습니다...
+            </div>
+          ) : gpsAddress ? (
+            <div style={{ textAlign: "center", marginBottom: 16 }}>
+              <div style={{ fontSize: 16, fontWeight: 700, color: "#111" }}>{gpsAddress}</div>
+              {gpsCoords && (
+                <div style={{ fontSize: 12, color: "#888", marginTop: 4 }}>
+                  위도 {gpsCoords.lat.toFixed(4)}  경도 {gpsCoords.lng.toFixed(4)}
+                </div>
+              )}
+            </div>
+          ) : null}
+
+          {/* 오류 메시지 */}
+          {gpsError && !showAddressSearch && (
+            <div style={{
+              background: "#FFF5F5", border: "1px solid #FED7D7",
+              borderRadius: 8, padding: "10px 14px", marginBottom: 12,
+              fontSize: 13, color: "#C53030",
+            }}>⚠️ {gpsError}</div>
+          )}
+
+          {/* 위치 확인 체크 — 주소 있을 때만 */}
+          {gpsAddress && !showAddressSearch && (
+            <div style={{
+              display: "flex", alignItems: "center", gap: 8,
+              background: "#F0FFF4", border: "1px solid #9AE6B4",
+              borderRadius: 8, padding: "10px 14px", marginBottom: 16,
+            }}>
+              <span style={{ color: "#2F855A", fontSize: 16 }}>✓</span>
+              <span style={{ fontSize: 14, color: "#2F855A", fontWeight: 600 }}>위치 정보가 올바릅니까?</span>
+            </div>
+          )}
+
+          {/* 주소 검색 입력창 */}
+          {showAddressSearch && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "#111", marginBottom: 8 }}>
+                📍 주소 직접 입력
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <input
+                  value={addressSearchQuery}
+                  onChange={(e) => setAddressSearchQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && searchAddress()}
+                  placeholder="예: 서산시 대산읍 또는 도로명 주소"
+                  style={{
+                    flex: 1, border: "1.5px solid #E2E8F0", borderRadius: 8,
+                    padding: "11px 13px", fontSize: 14, outline: "none",
+                  }}
+                />
+                <button
+                  onClick={searchAddress}
+                  style={{
+                    padding: "11px 16px", background: "#E53E3E", color: "#fff",
+                    border: "none", borderRadius: 8, fontSize: 14, fontWeight: 700,
+                    cursor: "pointer", flexShrink: 0,
+                  }}
+                >검색</button>
+              </div>
+              {gpsError && (
+                <div style={{ fontSize: 12, color: "#E53E3E", marginTop: 6 }}>{gpsError}</div>
+              )}
+            </div>
+          )}
+
+          {/* 하단 버튼들 */}
           <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
-            <button style={{
-              flex: 1, padding: "14px", background: "#fff", border: "1.5px solid #ddd",
-              borderRadius: 10, fontSize: 15, fontWeight: 600, cursor: "pointer", color: "#333",
-            }}>아니요, 다시 설정</button>
+            <button
+              onClick={() => {
+                setShowAddressSearch(true);
+                setGpsError("");
+              }}
+              style={{
+                flex: 1, padding: "13px", background: "#fff",
+                border: "1.5px solid #ddd", borderRadius: 10,
+                fontSize: 14, fontWeight: 600, cursor: "pointer", color: "#333",
+              }}
+            >아니요, 다시 설정</button>
+            <button
+              onClick={() => {
+                setGpsAddress("");
+                setGpsCoords(null);
+                setGpsError("");
+                setShowAddressSearch(false);
+                getGpsLocation();
+              }}
+              style={{
+                padding: "13px 14px", background: "#EBF8FF",
+                border: "1.5px solid #90CDF4", borderRadius: 10,
+                fontSize: 13, fontWeight: 600, cursor: "pointer", color: "#2B6CB0",
+              }}
+            >🔄 재시도</button>
           </div>
-          <button style={styles.redBtn} onClick={() => go(SCREENS.DETAILS)}>다음</button>
+
+          <button
+            style={{
+              ...styles.redBtn,
+              opacity: gpsAddress ? 1 : 0.4,
+              cursor: gpsAddress ? "pointer" : "not-allowed",
+            }}
+            onClick={() => gpsAddress && go(SCREENS.DETAILS)}
+          >다음</button>
         </div>
       </div>
     );
@@ -819,20 +983,16 @@ export default function App() {
 
   // ── 화면 05: 사진/동영상 등록 ─────────────────────────
   if (screen === SCREENS.PHOTOS) {
-    const MOCK_PHOTOS = [
-      { id: 1, emoji: "🏗️", bg: "#4A5568" },
-      { id: 2, emoji: "🏭", bg: "#718096" },
-    ];
 
-    const handleAddPhoto = () => {
-      const newId = Date.now();
-      const options = [
-        { emoji: "📸", bg: "#2D6A4F" },
-        { emoji: "🔧", bg: "#1A535C" },
-        { emoji: "⚠️", bg: "#774936" },
-      ];
-      const pick = options[uploadedPhotos.length % options.length];
-      setUploadedPhotos((prev) => [...prev, { id: newId, ...pick }]);
+    const handleAddPhoto = (e) => {
+      const files = Array.from(e.target.files || []);
+      if (files.length === 0) return;
+      const newPhotos = files.map(f => ({
+        id: Date.now() + Math.random(),
+        url: URL.createObjectURL(f),
+        name: f.name,
+      }));
+      setUploadedPhotos(prev => [...prev, ...newPhotos]);
       setPhotoError(false);
     };
 
@@ -840,7 +1000,7 @@ export default function App() {
       setUploadedPhotos((prev) => prev.filter((p) => p.id !== id));
     };
 
-    const allPhotos = [...MOCK_PHOTOS, ...uploadedPhotos];
+    const allPhotos = [...uploadedPhotos];
     const canProceed = allPhotos.length >= 1;
 
     const handleNext = () => {
@@ -858,10 +1018,9 @@ export default function App() {
           <button style={styles.cancelBtn} onClick={() => go(SCREENS.MAIN)}>취소</button>
         </div>
         <div style={styles.body}>
-          <p style={{ fontSize: 14, color: "#666", marginBottom: 16 }}>
+          <p style={{ fontSize: 14, color: "#666", marginBottom: 10 }}>
             사고 현장 사진 또는 동영상을 등록해주세요.
           </p>
-          {/* 필수 안내 뱃지 */}
           <div style={{
             display: "inline-flex", alignItems: "center", gap: 6,
             background: "#FFF5F5", border: "1px solid #FED7D7",
@@ -871,21 +1030,45 @@ export default function App() {
             <span style={{ fontSize: 12, color: "#C53030", fontWeight: 600 }}>최소 1장 이상 등록 필수</span>
           </div>
 
-          {/* 카메라 버튼 */}
-          <button
-            onClick={handleAddPhoto}
-            style={{
-              width: "100%", border: `2px dashed ${photoError ? "#E53E3E" : "#ddd"}`,
-              borderRadius: 12, padding: "22px", textAlign: "center",
-              marginBottom: 16, cursor: "pointer",
-              background: photoError ? "#FFF5F5" : "#FAFAFA",
-            }}
-          >
+          {/* 카메라 촬영 버튼 */}
+          <label style={{
+            display: "block", width: "100%",
+            border: `2px dashed ${photoError ? "#E53E3E" : "#ddd"}`,
+            borderRadius: 12, padding: "22px",
+            textAlign: "center", marginBottom: 12, cursor: "pointer",
+            background: photoError ? "#FFF5F5" : "#FAFAFA",
+          }}>
+            <input
+              type="file"
+              accept="image/*,video/*"
+              capture="environment"
+              multiple
+              onChange={handleAddPhoto}
+              style={{ display: "none" }}
+            />
             <div style={{ fontSize: 34, marginBottom: 6 }}>📷</div>
             <div style={{ fontSize: 14, color: photoError ? "#E53E3E" : "#666", fontWeight: 600 }}>
-              사진 촬영 / 갤러리에서 선택
+              카메라로 촬영하기
             </div>
-          </button>
+            <div style={{ fontSize: 12, color: "#aaa", marginTop: 4 }}>탭하면 카메라가 바로 열립니다</div>
+          </label>
+
+          {/* 갤러리에서 선택 버튼 */}
+          <label style={{
+            display: "block", width: "100%",
+            border: "1.5px solid #ddd", borderRadius: 10,
+            padding: "13px", textAlign: "center",
+            marginBottom: 14, cursor: "pointer", background: "#fff",
+          }}>
+            <input
+              type="file"
+              accept="image/*,video/*"
+              multiple
+              onChange={handleAddPhoto}
+              style={{ display: "none" }}
+            />
+            <span style={{ fontSize: 14, fontWeight: 600, color: "#555" }}>🖼️ 갤러리에서 선택</span>
+          </label>
 
           {/* 에러 메시지 */}
           {photoError && (
@@ -908,42 +1091,29 @@ export default function App() {
                 등록된 사진 <span style={{ color: "#E53E3E", fontWeight: 700 }}>{allPhotos.length}장</span>
               </div>
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                {allPhotos.map((p, i) => (
+                {allPhotos.map((p) => (
                   <div key={p.id} style={{ position: "relative" }}>
-                    <div style={{
-                      width: 100, height: 82, background: p.bg,
-                      borderRadius: 10, display: "flex", alignItems: "center",
-                      justifyContent: "center", fontSize: 24, color: "#fff",
-                    }}>{p.emoji}</div>
-                    {/* 삭제 버튼 — 목 사진(처음 2장) 은 삭제 불가 */}
-                    {i >= 2 && (
-                      <button
-                        onClick={() => handleRemovePhoto(p.id)}
-                        style={{
-                          position: "absolute", top: -6, right: -6,
-                          width: 22, height: 22, borderRadius: "50%",
-                          background: "#E53E3E", border: "2px solid #fff",
-                          color: "#fff", fontSize: 13, cursor: "pointer",
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                          lineHeight: 1, fontWeight: 700,
-                        }}
-                      >×</button>
-                    )}
+                    <img
+                      src={p.url}
+                      alt={p.name}
+                      style={{ width: 100, height: 82, objectFit: "cover", borderRadius: 10 }}
+                    />
+                    <button
+                      onClick={() => handleRemovePhoto(p.id)}
+                      style={{
+                        position: "absolute", top: -6, right: -6,
+                        width: 22, height: 22, borderRadius: "50%",
+                        background: "#E53E3E", border: "2px solid #fff",
+                        color: "#fff", fontSize: 13, cursor: "pointer",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        fontWeight: 700,
+                      }}
+                    >×</button>
                   </div>
                 ))}
               </div>
             </div>
           )}
-
-          {/* 추가 버튼 */}
-          <button
-            onClick={handleAddPhoto}
-            style={{
-              width: "100%", padding: "13px", background: "#fff",
-              border: "1.5px solid #ddd", borderRadius: 10, fontSize: 15,
-              fontWeight: 600, cursor: "pointer", color: "#555", marginBottom: 20,
-            }}
-          >+ 추가 사진/동영상</button>
 
           <button style={styles.redBtn} onClick={handleNext}>다음</button>
         </div>
