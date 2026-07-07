@@ -156,9 +156,45 @@ export default function App() {
     "박관리 부장": null,
     "안전상황실": null,
   });
+  // ── 인앱 알림 state ───────────────────────────────────
+  const [notifications, setNotifications] = useState([]);   // 미확인 알림 목록
+  const [activeNotif, setActiveNotif] = useState(null);      // 현재 표시 중인 알림
+  const [notifBanner, setNotifBanner] = useState(null);      // 상단 배너 알림
+
   const [isMock, setIsMock] = useState(false);
 
   const go = (s) => setScreen(s);
+
+  // ── Supabase Realtime — 상급자 지시 수신 ──────────────
+  // 현장 작업자일 때만 구독
+  useState(() => {
+    if (userRole !== "worker") return;
+    const channel = supabase
+      .channel("directives-channel")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "directives" },
+        (payload) => {
+          const directive = payload.new;
+          const newNotif = {
+            id: directive.id,
+            title: `상급자 조치 지시`,
+            body: `${directive.supervisor_name}이(가) '${directive.action_label}' 지시를 전송했습니다.`,
+            message: directive.message,
+            actionLabel: directive.action_label,
+            supervisorName: directive.supervisor_name,
+            sentAt: directive.sent_at,
+          };
+          // 배너 표시
+          setNotifBanner(newNotif);
+          setNotifications(prev => [newNotif, ...prev]);
+          // 5초 후 배너 자동 닫기
+          setTimeout(() => setNotifBanner(null), 5000);
+        }
+      )
+      .subscribe();
+    return () => supabase.removeChannel(channel);
+  }, [userRole]);
 
   // 현재 workType에 맞는 보고 대상 목록
   const currentRecipients = RECIPIENTS_BY_TYPE[workType] || RECIPIENTS_BY_TYPE["유지보수"];
@@ -233,6 +269,126 @@ export default function App() {
     },
   };
 
+  // ── 인앱 알림 배너 + 팝업 렌더 ──────────────────────
+  const NotifBanner = () => notifBanner ? (
+    <div style={{
+      position: "fixed", top: 0, left: "50%", transform: "translateX(-50%)",
+      width: 375, zIndex: 9999, padding: "10px 12px 0",
+      animation: "slideDown 0.3s ease",
+    }}>
+      <style>{`@keyframes slideDown{from{transform:translateX(-50%) translateY(-100%)}to{transform:translateX(-50%) translateY(0)}}`}</style>
+      <div style={{
+        background: "#1A365D", borderRadius: 14,
+        padding: "12px 14px",
+        boxShadow: "0 4px 20px rgba(0,0,0,0.25)",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+          <div style={{
+            width: 28, height: 28, borderRadius: 8, background: "#E53E3E",
+            display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0,
+          }}>🦺</div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#fff" }}>{notifBanner.title}</div>
+            <div style={{ fontSize: 10, color: "rgba(255,255,255,0.6)" }}>방금 전</div>
+          </div>
+          <button onClick={() => setNotifBanner(null)} style={{
+            background: "none", border: "none", color: "rgba(255,255,255,0.5)",
+            fontSize: 18, cursor: "pointer", padding: 0,
+          }}>×</button>
+        </div>
+        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.85)", marginBottom: 10, lineHeight: 1.5 }}>
+          {notifBanner.body}
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={() => setNotifBanner(null)} style={{
+            flex: 1, background: "rgba(255,255,255,0.15)", border: "none",
+            borderRadius: 7, padding: "7px", fontSize: 11, color: "#fff", cursor: "pointer",
+          }}>닫기</button>
+          <button onClick={() => { setActiveNotif(notifBanner); setNotifBanner(null); }} style={{
+            flex: 2, background: "#E53E3E", border: "none",
+            borderRadius: 7, padding: "7px", fontSize: 11, fontWeight: 700, color: "#fff", cursor: "pointer",
+          }}>🚨 지시 내용 확인하기</button>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
+  const NotifPopup = () => activeNotif ? (
+    <div style={{
+      position: "fixed", top: 0, left: "50%", transform: "translateX(-50%)",
+      width: 375, height: "100%", zIndex: 9998,
+      background: "rgba(0,0,0,0.55)",
+      display: "flex", alignItems: "center", justifyContent: "center", padding: "20px",
+    }}>
+      <div style={{
+        background: "#fff", borderRadius: 18, padding: "20px", width: "100%",
+        boxShadow: "0 8px 32px rgba(0,0,0,0.2)",
+      }}>
+        {/* 헤더 */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+          <div style={{
+            width: 40, height: 40, borderRadius: "50%", background: "#FFF5F5",
+            display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20,
+          }}>👔</div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 15, fontWeight: 800, color: "#111" }}>상급자 조치 지시</div>
+            <div style={{ fontSize: 12, color: "#888", marginTop: 1 }}>
+              {activeNotif.supervisorName}
+            </div>
+          </div>
+          <div style={{
+            background: "#FFF5F5", border: "1px solid #FED7D7",
+            borderRadius: 12, padding: "3px 10px",
+            fontSize: 11, fontWeight: 700, color: "#C53030",
+          }}>즉시 확인</div>
+        </div>
+
+        {/* 지시 내용 */}
+        <div style={{
+          background: "#FFF5F5", border: "1px solid #FED7D7",
+          borderRadius: 10, padding: "12px 14px", marginBottom: 14,
+        }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#C53030", marginBottom: 6 }}>
+            🚨 {activeNotif.actionLabel}
+          </div>
+          <div style={{ fontSize: 12, color: "#333", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>
+            {activeNotif.message}
+          </div>
+        </div>
+
+        {/* 자동 전송 안내 */}
+        <div style={{
+          background: "#F0FFF4", border: "1px solid #9AE6B4",
+          borderRadius: 8, padding: "10px 12px", marginBottom: 14,
+          fontSize: 12, color: "#276749", lineHeight: 1.5,
+        }}>
+          ✅ 확인 완료 시 상급자에게 자동으로 알림이 전송됩니다.
+        </div>
+
+        {/* 버튼 */}
+        <div style={{ display: "flex", gap: 10 }}>
+          <button onClick={() => setActiveNotif(null)} style={{
+            flex: 1, padding: "13px", background: "#fff",
+            border: "1.5px solid #ddd", borderRadius: 10,
+            fontSize: 14, fontWeight: 600, cursor: "pointer", color: "#555",
+          }}>나중에</button>
+          <button onClick={async () => {
+            // 확인 완료 처리
+            await supabase.from("directives")
+              .update({ is_confirmed: true, confirmed_at: new Date().toISOString() })
+              .eq("id", activeNotif.id);
+            setActiveNotif(null);
+            setNotifications(prev => prev.filter(n => n.id !== activeNotif.id));
+          }} style={{
+            flex: 2, padding: "13px", background: "#276749",
+            border: "none", borderRadius: 10,
+            fontSize: 14, fontWeight: 700, cursor: "pointer", color: "#fff",
+          }}>✓ 조치 완료 확인</button>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   // ── 화면 00: 로그인 ──────────────────────────────────
   if (screen === SCREENS.LOGIN) {
 
@@ -298,7 +454,7 @@ export default function App() {
     };
 
     return (
-      <div style={styles.phone}>
+      <div style={styles.phone}><NotifBanner /><NotifPopup />
         <div style={styles.statusBar}><span>9:41</span><span>📶 🔋</span></div>
 
         <div style={{
@@ -522,7 +678,7 @@ export default function App() {
   // ── 화면 01: 메인 ──────────────────────────────────────
   if (screen === SCREENS.MAIN) {
     return (
-      <div style={styles.phone}>
+      <div style={styles.phone}><NotifBanner /><NotifPopup />
         <div style={styles.statusBar}>
           <span>9:41</span>
           <span>📶 🔋</span>
@@ -600,7 +756,7 @@ export default function App() {
   // ── 화면 02: 사고 유형 선택 ──────────────────────────
   if (screen === SCREENS.ACCIDENT_TYPE) {
     return (
-      <div style={styles.phone}>
+      <div style={styles.phone}><NotifBanner /><NotifPopup />
         <div style={styles.statusBar}><span>9:41</span><span>📶 🔋</span></div>
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.MAIN)}>‹</button>
@@ -713,7 +869,7 @@ export default function App() {
     }
 
     return (
-      <div style={styles.phone}>
+      <div style={styles.phone}><NotifBanner /><NotifPopup />
         <div style={styles.statusBar}><span>9:41</span><span>📶 🔋</span></div>
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.ACCIDENT_TYPE)}>‹</button>
@@ -857,7 +1013,7 @@ export default function App() {
   // ── 화면 04: 사고 내용 입력 ──────────────────────────
   if (screen === SCREENS.DETAILS) {
     return (
-      <div style={styles.phone}>
+      <div style={styles.phone}><NotifBanner /><NotifPopup />
         <div style={styles.statusBar}><span>9:41</span><span>📶 🔋</span></div>
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.LOCATION)}>‹</button>
@@ -1010,7 +1166,7 @@ export default function App() {
     };
 
     return (
-      <div style={styles.phone}>
+      <div style={styles.phone}><NotifBanner /><NotifPopup />
         <div style={styles.statusBar}><span>9:41</span><span>📶 🔋</span></div>
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.DETAILS)}>‹</button>
@@ -1188,7 +1344,7 @@ export default function App() {
     const totalCount = ACTION_ITEMS.length;
 
     return (
-      <div style={styles.phone}>
+      <div style={styles.phone}><NotifBanner /><NotifPopup />
         <div style={styles.statusBar}><span>9:41</span><span>📶 🔋</span></div>
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.WORKER_TIMELINE)}>‹</button>
@@ -1354,7 +1510,7 @@ export default function App() {
     const canSend = checkedRecipients.length > 0;
 
     return (
-      <div style={styles.phone}>
+      <div style={styles.phone}><NotifBanner /><NotifPopup />
         <div style={styles.statusBar}><span>9:41</span><span>📶 🔋</span></div>
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.PHOTOS)}>‹</button>
@@ -1470,7 +1626,7 @@ export default function App() {
   // ── 화면 07: 보고 완료 ──────────────────────────────
   if (screen === SCREENS.COMPLETE) {
     return (
-      <div style={styles.phone}>
+      <div style={styles.phone}><NotifBanner /><NotifPopup />
         <div style={styles.statusBar}><span>9:41</span><span>📶 🔋</span></div>
         <div style={{ flex: 1, overflowY: "auto", padding: "32px 24px 20px", display: "flex", flexDirection: "column", alignItems: "center" }}>
           {/* 완료 아이콘 */}
@@ -1614,7 +1770,7 @@ export default function App() {
     const allEvents = [...fixedEvents, ...workerActionEvents, ...sentDirectives, ...pendingDirectives];
 
     return (
-      <div style={styles.phone}>
+      <div style={styles.phone}><NotifBanner /><NotifPopup />
         <div style={styles.statusBar}><span>9:41</span><span>📶 🔋</span></div>
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.COMPLETE)}>‹</button>
@@ -1960,7 +2116,7 @@ export default function App() {
       : emergencyUsers.filter(u => emergencyTab === "전체" || u.work_type === emergencyTab || (!u.work_type && emergencyTab === "전체"));
 
     return (
-      <div style={styles.phone}>
+      <div style={styles.phone}><NotifBanner /><NotifPopup />
         <div style={styles.statusBar}><span>9:41</span><span>📶 🔋</span></div>
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.MAIN)}>‹</button>
@@ -2145,7 +2301,7 @@ export default function App() {
       setDirectiveEditing((prev) => ({ ...prev, [key]: false }));
     };
 
-    const handleSend = (key) => {
+    const handleSend = async (key) => {
       const now = new Date();
       const hhmm = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
       setDirectiveSent((prev) => ({ ...prev, [key]: true }));
@@ -2153,10 +2309,20 @@ export default function App() {
       setChecklistDone((prev) => ({ ...prev, [key]: true }));
       setActiveDirective(null);
       setDirectiveEditing((prev) => ({ ...prev, [key]: false }));
+
+      // Supabase에 지시 저장 → Realtime으로 현장작업자에게 전달
+      const item = CHECKLIST_ITEMS.find(it => it.key === key);
+      await supabase.from("directives").insert({
+        accident_id: "2024-0625-001",
+        action_key: key,
+        action_label: item?.label || key,
+        message: directiveTexts[key] || item?.defaultMsg || "",
+        supervisor_name: "김현당 팀장",
+      });
     };
 
     return (
-      <div style={styles.phone}>
+      <div style={styles.phone}><NotifBanner /><NotifPopup />
         <div style={styles.statusBar}><span>9:41</span><span>📶 🔋</span></div>
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.COMPLETE)}>‹</button>
@@ -2459,7 +2625,7 @@ export default function App() {
     const totalCount = CHECKLIST_META.length;
 
     return (
-      <div style={styles.phone}>
+      <div style={styles.phone}><NotifBanner /><NotifPopup />
         <div style={styles.statusBar}><span>9:41</span><span>📶 🔋</span></div>
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.SUPERVISOR)}>‹</button>
@@ -3095,5 +3261,11 @@ export default function App() {
     );
   }
 
-  return null;
+  // 알림 배너/팝업은 모든 화면 위에 표시
+  return (
+    <>
+      <NotifBanner />
+      <NotifPopup />
+    </>
+  );
 }
