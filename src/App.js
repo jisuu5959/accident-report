@@ -18,10 +18,12 @@ const SCREENS = {
   RECIPIENTS: "recipients",
   COMPLETE: "complete",
   WORKER_TIMELINE: "worker_timeline",
+  SUPERVISOR_DASHBOARD: "supervisor_dashboard", // 상급자 첫 화면 — 사고 현황
   SUPERVISOR: "supervisor",
   TIMELINE: "timeline",
-  SITUATION_ROOM: "situation_room",       // 상황실 — 전체 사고 목록
-  SITUATION_DETAIL: "situation_detail",   // 상황실 — 개별 사고 상세
+  SITUATION_ROOM: "situation_room",
+  SITUATION_DETAIL: "situation_detail",
+  EMERGENCY: "emergency",                       // 비상 연락망
   SMS: "sms",
 };
 
@@ -130,7 +132,11 @@ export default function App() {
   // ── 상황실 state ──────────────────────────────────────
   const [selectedAccident, setSelectedAccident] = useState(null);
   const [situationFilter, setSituationFilter] = useState("전체");
-  const [dispatchState, setDispatchState] = useState({});   // 출동 지시 상태 {key: "HH:MM"}
+  const [dispatchState, setDispatchState] = useState({});
+  const [emergencyTab, setEmergencyTab] = useState("유지보수");
+  const [emergencySearch, setEmergencySearch] = useState("");
+  const [emergencyUsers, setEmergencyUsers] = useState([]);
+  const [searchResults, setSearchResults] = useState([]);
   // 보고 수신자별 확인 시각 (key: 이름, value: "HH:MM" 또는 null)
   const [reportConfirmed, setReportConfirmed] = useState({
     "김철수 작업자": "14:36",  // 1차 — 이미 접수됨
@@ -276,7 +282,7 @@ export default function App() {
       setUserRole(user.role);
       if (user.work_type) setWorkType(user.work_type);
       if (user.role === "worker")     go(SCREENS.MAIN);
-      if (user.role === "supervisor") go(SCREENS.SUPERVISOR);
+      if (user.role === "supervisor") go(SCREENS.SUPERVISOR_DASHBOARD);
       if (user.role === "situation")  go(SCREENS.SITUATION_ROOM);
     };
 
@@ -438,7 +444,7 @@ export default function App() {
                         setUserRole(user.role);
                         if (user.work_type) setWorkType(user.work_type);
                         if (user.role === "worker")     go(SCREENS.MAIN);
-                        if (user.role === "supervisor") go(SCREENS.SUPERVISOR);
+                        if (user.role === "supervisor") go(SCREENS.SUPERVISOR_DASHBOARD);
                         if (user.role === "situation")  go(SCREENS.SITUATION_ROOM);
                       }
                     }, 200);
@@ -562,17 +568,16 @@ export default function App() {
           </button>
 
           {/* 긴급 연락처 */}
-          <div style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            background: "#F7F7F7",
-            borderRadius: 12,
-            padding: "12px 16px",
-          }}>
-            <span style={{ fontSize: 14, color: "#333" }}>📢 긴급 연락처</span>
-            <span style={{ fontSize: 13, color: "#E53E3E", fontWeight: 600 }}>비상 연락망 바로 보기 &gt;</span>
-          </div>
+            <div
+              onClick={() => go(SCREENS.EMERGENCY)}
+              style={{
+                display: "flex", justifyContent: "space-between", alignItems: "center",
+                background: "#F7F7F7", borderRadius: 12, padding: "12px 16px", cursor: "pointer",
+              }}
+            >
+              <span style={{ fontSize: 14, color: "#333" }}>📢 긴급 연락처</span>
+              <span style={{ fontSize: 13, color: "#E53E3E", fontWeight: 600 }}>비상 연락망 바로 보기 &gt;</span>
+            </div>
         </div>
         <div style={{ textAlign: "center", padding: "0 0 24px", fontSize: 13, color: "#999" }}>
           안전은 선택이 아닌 필수입니다.
@@ -1580,6 +1585,349 @@ export default function App() {
               display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
             }}
           >🚨 추가로 긴급 조치 현황 입력하기</button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── 화면 07-S: 상급자 대시보드 (첫 화면) ────────────
+  if (screen === SCREENS.SUPERVISOR_DASHBOARD) {
+    // 더미 사고 데이터 (DB 연결 후 실제 데이터로 교체)
+    const ACCIDENTS = [
+      {
+        id: "2024-0625-001", type: "추락", icon: "🧗",
+        location: "충청남도 서산시 대산읍", worker: "김철수 작업자",
+        occurredAt: "2024.06.25 14:35", status: "진행중", reportStep: "2차 보고",
+        injured: true, directiveDone: 2,
+      },
+      {
+        id: "2024-0620-001", type: "감전", icon: "⚡",
+        location: "충청남도 천안시 서북구", worker: "이민준 작업자",
+        occurredAt: "2024.06.20 10:12", status: "완료", reportStep: "4차 보고",
+        injured: false, directiveDone: 5,
+      },
+      {
+        id: "2024-0618-002", type: "낙하/비래", icon: "🪨",
+        location: "충청남도 공주시 반포면", worker: "박성우 작업자",
+        occurredAt: "2024.06.18 15:48", status: "완료", reportStep: "4차 보고",
+        injured: true, directiveDone: 5,
+      },
+    ];
+
+    const activeList = ACCIDENTS.filter(a => a.status === "진행중");
+    const doneList   = ACCIDENTS.filter(a => a.status === "완료");
+
+    return (
+      <div style={{ ...styles.phone, background: "#F7F8FC" }}>
+        <div style={{ ...styles.statusBar, background: "#1A365D", color: "#fff" }}>
+          <span>9:41</span><span>📶 🔋</span>
+        </div>
+
+        {/* 헤더 */}
+        <div style={{
+          background: "#1A365D", padding: "14px 20px 18px",
+          display: "flex", justifyContent: "space-between", alignItems: "center",
+        }}>
+          <div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "#fff" }}>사고 현황</div>
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.65)", marginTop: 3 }}>
+              상급자 모니터링 대시보드
+            </div>
+          </div>
+          <button
+            onClick={() => go(SCREENS.LOGIN)}
+            style={{
+              background: "rgba(255,255,255,0.15)", border: "none",
+              borderRadius: 8, padding: "6px 12px", color: "#fff",
+              fontSize: 12, cursor: "pointer",
+            }}
+          >로그아웃</button>
+        </div>
+
+        {/* 요약 카드 */}
+        <div style={{ display: "flex", gap: 10, padding: "14px 16px 0" }}>
+          {[
+            { label: "전체",   value: ACCIDENTS.length, bg: "#fff",    color: "#111",    border: "#E2E8F0" },
+            { label: "진행중", value: activeList.length, bg: "#FFF5F5", color: "#C53030", border: "#FED7D7" },
+            { label: "완료",   value: doneList.length,   bg: "#F0FFF4", color: "#276749", border: "#9AE6B4" },
+          ].map(c => (
+            <div key={c.label} style={{
+              flex: 1, background: c.bg, border: `1px solid ${c.border}`,
+              borderRadius: 10, padding: "10px 12px", textAlign: "center",
+            }}>
+              <div style={{ fontSize: 24, fontWeight: 800, color: c.color }}>{c.value}</div>
+              <div style={{ fontSize: 11, color: "#888", marginTop: 2 }}>{c.label}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* 진행중 사고 목록 */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "16px 16px 20px" }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "#111", marginBottom: 10 }}>
+            🚨 진행중인 사고
+          </div>
+
+          {activeList.length === 0 ? (
+            <div style={{
+              background: "#F0FFF4", border: "1px solid #9AE6B4",
+              borderRadius: 10, padding: "20px", textAlign: "center",
+              fontSize: 13, color: "#276749", fontWeight: 600,
+            }}>✅ 현재 진행중인 사고가 없습니다.</div>
+          ) : (
+            activeList.map(acc => (
+              <button
+                key={acc.id}
+                onClick={() => go(SCREENS.SUPERVISOR)}
+                style={{
+                  width: "100%", background: "#fff",
+                  border: "1.5px solid #FED7D7", borderRadius: 12,
+                  padding: "14px", marginBottom: 10, textAlign: "left",
+                  cursor: "pointer", boxShadow: "0 2px 8px rgba(229,62,62,0.1)",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 20 }}>{acc.icon}</span>
+                    <span style={{ fontSize: 15, fontWeight: 700, color: "#111" }}>{acc.type}</span>
+                    {acc.injured && (
+                      <span style={{ background: "#FFF5F5", color: "#E53E3E", fontSize: 11, fontWeight: 700, padding: "2px 7px", borderRadius: 6, border: "1px solid #FED7D7" }}>
+                        부상자 있음
+                      </span>
+                    )}
+                  </div>
+                  <span style={{
+                    background: "#FFF5F5", color: "#C53030", fontSize: 11,
+                    fontWeight: 700, padding: "3px 10px", borderRadius: 12,
+                    border: "1px solid #FED7D7",
+                  }}>● 진행중</span>
+                </div>
+                <div style={{ fontSize: 12, color: "#555", lineHeight: 1.7 }}>
+                  <div>📍 {acc.location}</div>
+                  <div>👷 {acc.worker}</div>
+                  <div>🕐 {acc.occurredAt}</div>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10 }}>
+                  <span style={{ background: "#EBF8FF", color: "#2B6CB0", fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 6 }}>
+                    {acc.reportStep}
+                  </span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <div style={{ width: 60, height: 4, background: "#E2E8F0", borderRadius: 2, overflow: "hidden" }}>
+                      <div style={{ height: "100%", width: `${(acc.directiveDone/5)*100}%`, background: "#E53E3E", borderRadius: 2 }} />
+                    </div>
+                    <span style={{ fontSize: 11, color: "#888" }}>조치 {acc.directiveDone}/5</span>
+                  </div>
+                </div>
+              </button>
+            ))
+          )}
+
+          {/* 완료된 사고 */}
+          <div style={{ fontSize: 14, fontWeight: 700, color: "#111", marginBottom: 10, marginTop: 8 }}>
+            ✅ 완료된 사고
+          </div>
+          {doneList.map(acc => (
+            <div key={acc.id} style={{
+              background: "#fff", border: "1px solid #E2E8F0",
+              borderRadius: 12, padding: "12px 14px", marginBottom: 8,
+              opacity: 0.75,
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 18 }}>{acc.icon}</span>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "#333" }}>{acc.type}</div>
+                    <div style={{ fontSize: 11, color: "#888" }}>{acc.occurredAt} · {acc.worker}</div>
+                  </div>
+                </div>
+                <span style={{
+                  background: "#F0FFF4", color: "#276749", fontSize: 11,
+                  fontWeight: 700, padding: "3px 10px", borderRadius: 12,
+                  border: "1px solid #9AE6B4",
+                }}>✓ 완료</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // ── 화면 EM: 비상 연락망 ──────────────────────────────
+  if (screen === SCREENS.EMERGENCY) {
+    const nowHHMM = () => {
+      const d = new Date();
+      return `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+    };
+
+    // DB에서 사용자 목록 불러오기 (화면 진입 시)
+    const loadUsers = async () => {
+      const { data } = await supabase
+        .from("users")
+        .select("*")
+        .eq("is_active", true)
+        .order("work_type", { ascending: true })
+        .order("name", { ascending: true });
+      if (data) setEmergencyUsers(data);
+    };
+
+    if (emergencyUsers.length === 0) loadUsers();
+
+    // 이름 검색 자동완성
+    const handleSearch = (val) => {
+      setEmergencySearch(val);
+      if (!val.trim()) { setSearchResults([]); return; }
+      const results = emergencyUsers.filter(u =>
+        u.name.includes(val.trim())
+      );
+      setSearchResults(results);
+    };
+
+    const ROLE_LABEL = { worker: "현장 작업자", supervisor: "상급자", situation: "상황실" };
+    const ROLE_COLOR = { worker: "#E53E3E", supervisor: "#2B6CB0", situation: "#1A365D" };
+
+    const displayUsers = emergencySearch.trim()
+      ? searchResults
+      : emergencyUsers.filter(u => emergencyTab === "전체" || u.work_type === emergencyTab || (!u.work_type && emergencyTab === "전체"));
+
+    return (
+      <div style={styles.phone}>
+        <div style={styles.statusBar}><span>9:41</span><span>📶 🔋</span></div>
+        <div style={styles.header}>
+          <button style={styles.backBtn} onClick={() => go(SCREENS.MAIN)}>‹</button>
+          <span style={styles.headerTitle}>비상 연락망</span>
+          <span />
+        </div>
+        <div style={styles.body}>
+
+          {/* 이름 검색 */}
+          <div style={{
+            display: "flex", alignItems: "center", gap: 8,
+            border: "1.5px solid #E2E8F0", borderRadius: 12,
+            padding: "10px 14px", marginBottom: 14, background: "#fff",
+          }}>
+            <span style={{ fontSize: 16 }}>🔍</span>
+            <input
+              value={emergencySearch}
+              onChange={(e) => handleSearch(e.target.value)}
+              placeholder="이름 검색 (한 글자도 OK)"
+              style={{
+                flex: 1, border: "none", outline: "none",
+                fontSize: 14, color: "#111", background: "transparent",
+              }}
+            />
+            {emergencySearch && (
+              <button
+                onClick={() => { setEmergencySearch(""); setSearchResults([]); }}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "#aaa", fontSize: 18 }}
+              >×</button>
+            )}
+          </div>
+
+          {/* 자동완성 결과 */}
+          {emergencySearch.trim() && searchResults.length > 0 && (
+            <div style={{
+              background: "#fff", border: "1px solid #E2E8F0",
+              borderRadius: 10, marginBottom: 12, overflow: "hidden",
+              boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+            }}>
+              {searchResults.map((u, i) => (
+                <div key={u.id} style={{
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                  padding: "12px 14px", borderBottom: i < searchResults.length - 1 ? "1px solid #F7F7F7" : "none",
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <div style={{
+                      width: 36, height: 36, borderRadius: "50%",
+                      background: `${ROLE_COLOR[u.role]}18`,
+                      display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18,
+                    }}>👤</div>
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: "#111" }}>{u.name}</div>
+                      <div style={{ fontSize: 11, color: "#888", marginTop: 1 }}>
+                        {u.team} · {u.position} ·
+                        <span style={{ color: ROLE_COLOR[u.role], fontWeight: 600 }}> {ROLE_LABEL[u.role]}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <a href={`tel:${u.phone}`} style={{
+                    background: "#E53E3E", color: "#fff", border: "none",
+                    borderRadius: 8, padding: "6px 12px", fontSize: 12,
+                    fontWeight: 700, cursor: "pointer", textDecoration: "none",
+                  }}>📞 전화</a>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {emergencySearch.trim() && searchResults.length === 0 && (
+            <div style={{ textAlign: "center", color: "#aaa", fontSize: 13, marginBottom: 12 }}>
+              "{emergencySearch}" 검색 결과가 없습니다.
+            </div>
+          )}
+
+          {/* 탭 — 검색 중엔 숨김 */}
+          {!emergencySearch.trim() && (
+            <>
+              <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+                {["전체", "유지보수", "운용투자"].map(tab => (
+                  <button key={tab} onClick={() => setEmergencyTab(tab)} style={{
+                    padding: "6px 14px", borderRadius: 20, border: "none", cursor: "pointer",
+                    fontSize: 12, fontWeight: 600,
+                    background: emergencyTab === tab ? "#E53E3E" : "#F7F7F7",
+                    color: emergencyTab === tab ? "#fff" : "#888",
+                  }}>{tab}</button>
+                ))}
+              </div>
+
+              {/* 연락망 목록 */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {displayUsers.length === 0 ? (
+                  <div style={{ textAlign: "center", color: "#aaa", fontSize: 13, padding: "20px 0" }}>
+                    불러오는 중...
+                  </div>
+                ) : (
+                  displayUsers.map((u, i) => (
+                    <div key={u.id} style={{
+                      background: "#fff", border: "1px solid #E2E8F0",
+                      borderRadius: 10, padding: "12px 14px",
+                      display: "flex", alignItems: "center", justifyContent: "space-between",
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <div style={{
+                          width: 38, height: 38, borderRadius: "50%",
+                          background: `${ROLE_COLOR[u.role]}18`,
+                          display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18,
+                        }}>👤</div>
+                        <div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <span style={{ fontSize: 14, fontWeight: 700, color: "#111" }}>{u.name}</span>
+                            <span style={{
+                              background: `${ROLE_COLOR[u.role]}18`,
+                              color: ROLE_COLOR[u.role],
+                              fontSize: 10, fontWeight: 700,
+                              padding: "1px 6px", borderRadius: 4,
+                            }}>{ROLE_LABEL[u.role]}</span>
+                          </div>
+                          <div style={{ fontSize: 11, color: "#888", marginTop: 2 }}>
+                            {u.team} · {u.position} · {u.phone?.replace(/(\d{3})(\d{4})(\d{4})/, "$1-$2-$3")}
+                          </div>
+                          {u.work_type && (
+                            <div style={{ fontSize: 10, color: "#aaa", marginTop: 1 }}>{u.work_type}</div>
+                          )}
+                        </div>
+                      </div>
+                      <a href={`tel:${u.phone}`} style={{
+                        background: "#E53E3E", color: "#fff",
+                        borderRadius: 8, padding: "7px 12px",
+                        fontSize: 12, fontWeight: 700,
+                        textDecoration: "none", flexShrink: 0,
+                      }}>📞 전화</a>
+                    </div>
+                  ))
+                )}
+              </div>
+            </>
+          )}
         </div>
       </div>
     );
