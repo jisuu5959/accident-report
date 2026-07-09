@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 // ── Supabase 연결 설정 ──────────────────────────────────
@@ -127,7 +127,7 @@ export default function App() {
   const [subItemTimes, setSubItemTimes] = useState({});
   // 상급자 체크리스트 state
   const [checklistDone, setChecklistDone] = useState({
-    작업중지: false, 현장통제: false, 신고119: false, 응급조치: false, 현장보존: false,
+    작업중지: true, 신고119: true, 현장통제: false, 응급조치: false, 현장보존: false,
   });
   const [activeDirective, setActiveDirective] = useState(null);
   const [directiveTexts, setDirectiveTexts] = useState({});
@@ -161,13 +161,12 @@ export default function App() {
   const [activeNotif, setActiveNotif] = useState(null);      // 현재 표시 중인 알림
   const [notifBanner, setNotifBanner] = useState(null);      // 상단 배너 알림
 
-  const [isMock, setIsMock] = useState(false);
+  const [showMockAlert, setShowMockAlert] = useState(false);
 
   const go = (s) => setScreen(s);
 
   // ── Supabase Realtime — 상급자 지시 수신 ──────────────
-  // 현장 작업자일 때만 구독
-  useState(() => {
+  useEffect(() => {
     if (userRole !== "worker") return;
     const channel = supabase
       .channel("directives-channel")
@@ -185,11 +184,36 @@ export default function App() {
             supervisorName: directive.supervisor_name,
             sentAt: directive.sent_at,
           };
-          // 배너 표시
           setNotifBanner(newNotif);
           setNotifications(prev => [newNotif, ...prev]);
-          // 5초 후 배너 자동 닫기
           setTimeout(() => setNotifBanner(null), 5000);
+        }
+      )
+      .subscribe();
+    return () => supabase.removeChannel(channel);
+  }, [userRole]);
+
+  // ── Supabase Realtime — 상급자 새 사고 보고 수신 ──────
+  useEffect(() => {
+    if (userRole !== "supervisor") return;
+    const channel = supabase
+      .channel("accident-reports-channel")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "accident_reports" },
+        (payload) => {
+          const report = payload.new;
+          const newNotif = {
+            id: report.id,
+            title: "🚨 새 사고 보고 접수",
+            body: `${report.worker_name}이(가) ${report.accident_type} 사고를 보고했습니다.`,
+            message: `사고 유형: ${report.accident_type}\n위치: ${report.location}\n업무유형: ${report.work_type}\n부상자: ${report.has_injured ? "있음 ("+report.injured_name+")" : "없음"}`,
+            actionLabel: `${report.accident_type} 사고 보고`,
+            supervisorName: report.worker_name,
+            sentAt: report.created_at,
+          };
+          setNotifBanner(newNotif);
+          setTimeout(() => setNotifBanner(null), 8000);
         }
       )
       .subscribe();
@@ -718,7 +742,7 @@ export default function App() {
 
           {/* 모의훈련 버튼 */}
           <button
-            onClick={() => { setIsMock(true); go(SCREENS.ACCIDENT_TYPE); }}
+            onClick={() => { setIsMock(true); setShowMockAlert(true); }}
             style={{
               background: "#2F855A",
               border: "none",
@@ -733,6 +757,106 @@ export default function App() {
             <div style={{ fontSize: 28, fontWeight: 800, marginBottom: 6 }}>모의훈련</div>
             <div style={{ fontSize: 14, opacity: 0.85 }}>정기 훈련 및 교육용</div>
           </button>
+
+          {/* 모의훈련 알람 팝업 */}
+          {showMockAlert && (
+            <div style={{
+              position: "fixed", top: 0, left: "50%", transform: "translateX(-50%)",
+              width: 375, height: "100%", zIndex: 9999,
+              background: "rgba(0,0,0,0.7)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              padding: "24px",
+            }}>
+              <div style={{
+                background: "#fff", borderRadius: 20, width: "100%",
+                overflow: "hidden", boxShadow: "0 8px 40px rgba(0,0,0,0.3)",
+              }}>
+                {/* 빨간 헤더 */}
+                <div style={{
+                  background: "#E53E3E", padding: "24px 20px",
+                  textAlign: "center",
+                }}>
+                  <div style={{ fontSize: 48, marginBottom: 8 }}>🚨</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: "#fff", marginBottom: 4 }}>
+                    모의훈련 시작
+                  </div>
+                  <div style={{ fontSize: 13, color: "rgba(255,255,255,0.85)" }}>
+                    아래 지시사항을 확인하세요
+                  </div>
+                </div>
+
+                {/* 지시사항 */}
+                <div style={{ padding: "20px 20px 8px" }}>
+                  <div style={{
+                    background: "#FFF5F5", border: "2px solid #E53E3E",
+                    borderRadius: 12, padding: "16px", marginBottom: 12,
+                    display: "flex", gap: 12, alignItems: "flex-start",
+                  }}>
+                    <span style={{ fontSize: 24, flexShrink: 0 }}>🚫</span>
+                    <div>
+                      <div style={{ fontSize: 15, fontWeight: 800, color: "#C53030", marginBottom: 4 }}>
+                        즉시 작업 중지
+                      </div>
+                      <div style={{ fontSize: 13, color: "#555", lineHeight: 1.6 }}>
+                        현장 내 모든 작업을 즉시 중단하고<br />
+                        작업자를 안전한 곳으로 대피시키세요.
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{
+                    background: "#EBF8FF", border: "2px solid #2B6CB0",
+                    borderRadius: 12, padding: "16px", marginBottom: 20,
+                    display: "flex", gap: 12, alignItems: "flex-start",
+                  }}>
+                    <span style={{ fontSize: 24, flexShrink: 0 }}>🚑</span>
+                    <div>
+                      <div style={{ fontSize: 15, fontWeight: 800, color: "#2B6CB0", marginBottom: 4 }}>
+                        119 즉시 신고
+                      </div>
+                      <div style={{ fontSize: 13, color: "#555", lineHeight: 1.6 }}>
+                        119에 신고하고 부상자 여부를<br />
+                        확인 후 응급처치를 시행하세요.
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{
+                    background: "#FFFBEB", border: "1px solid #F6E05E",
+                    borderRadius: 10, padding: "10px 14px", marginBottom: 20,
+                    fontSize: 12, color: "#744210", lineHeight: 1.6,
+                    textAlign: "center",
+                  }}>
+                    ⚠️ 이것은 <strong>모의훈련</strong>입니다.<br />
+                    실제 사고가 아님을 인지하고 훈련에 임해주세요.
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      setShowMockAlert(false);
+                      go(SCREENS.ACCIDENT_TYPE);
+                    }}
+                    style={{
+                      width: "100%", padding: "16px", background: "#E53E3E",
+                      border: "none", borderRadius: 12, fontSize: 16,
+                      fontWeight: 800, color: "#fff", cursor: "pointer",
+                      marginBottom: 12,
+                      boxShadow: "0 4px 12px rgba(229,62,62,0.35)",
+                    }}
+                  >확인 — 훈련 시작하기 →</button>
+
+                  <button
+                    onClick={() => { setIsMock(false); setShowMockAlert(false); }}
+                    style={{
+                      width: "100%", padding: "12px", background: "none",
+                      border: "none", fontSize: 13, color: "#aaa",
+                      cursor: "pointer", marginBottom: 8,
+                    }}
+                  >취소</button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* 긴급 연락처 */}
             <div
@@ -907,11 +1031,6 @@ export default function App() {
           ) : gpsAddress ? (
             <div style={{ textAlign: "center", marginBottom: 16 }}>
               <div style={{ fontSize: 16, fontWeight: 700, color: "#111" }}>{gpsAddress}</div>
-              {gpsCoords && (
-                <div style={{ fontSize: 12, color: "#888", marginTop: 4 }}>
-                  위도 {gpsCoords.lat.toFixed(4)}  경도 {gpsCoords.lng.toFixed(4)}
-                </div>
-              )}
             </div>
           ) : null}
 
@@ -1615,7 +1734,21 @@ export default function App() {
                 opacity: canSend ? 1 : 0.4,
                 cursor: canSend ? "pointer" : "not-allowed",
               }}
-              onClick={() => canSend && go(SCREENS.COMPLETE)}
+              onClick={async () => {
+                if (!canSend) return;
+                // Supabase에 사고 보고 저장
+                await supabase.from("accident_reports").insert({
+                  worker_name: "김철수",
+                  accident_type: selectedType,
+                  work_type: workType,
+                  location: gpsAddress || "위치 정보 없음",
+                  content: accidentContent,
+                  has_injured: hasInjured,
+                  injured_name: injuredName,
+                  status: "진행중",
+                });
+                go(SCREENS.COMPLETE);
+              }}
             >전송</button>
           </div>
         </div>
@@ -1693,8 +1826,8 @@ export default function App() {
 
     const SUPERVISOR_ITEMS = [
       { key: "작업중지", icon: "🚫", color: "#C53030", label: "작업중지 지시" },
-      { key: "현장통제", icon: "🚧", color: "#B7791F", label: "현장 통제 (출입 통제)" },
       { key: "신고119",  icon: "🚑", color: "#2B6CB0", label: "119 신고" },
+      { key: "현장통제", icon: "🚧", color: "#B7791F", label: "현장 통제 (출입 통제)" },
       { key: "응급조치", icon: "🏥", color: "#6B46C1", label: "응급조치 / 병원 이송" },
       { key: "현장보존", icon: "🔒", color: "#276749", label: "현장 보존 조치" },
     ];
@@ -2269,14 +2402,14 @@ export default function App() {
         defaultMsg: `[작업중지 지시]\n\n2024.06.25 14:35 발생한 추락 사고와 관련하여\n현장 내 모든 작업을 즉시 중지하시기 바랍니다.\n\n- 진행 중인 모든 작업 즉시 중단\n- 작업자 안전지대로 대피\n- 추가 지시 있을 때까지 대기\n\n(안전관리시스템)`,
       },
       {
-        key: "현장통제",
-        label: "현장 통제 (출입 통제)",
-        defaultMsg: `[현장 출입 통제 지시]\n\n2024.06.25 14:35 사고 현장에 대한\n즉각적인 출입 통제를 실시하시기 바랍니다.\n\n- 사고 구역 접근 전면 차단\n- 통제선 설치 및 안내 요원 배치\n- 허가된 인원 외 출입 금지\n\n(안전관리시스템)`,
-      },
-      {
         key: "신고119",
         label: "119 신고",
         defaultMsg: `[119 신고 요청]\n\n2024.06.25 14:35 충청남도 서산시 대산읍\n현장에서 추락 사고가 발생하였습니다.\n\n- 부상자 발생 (응급 처치 필요)\n- 119 즉시 신고 요청\n- 구급대 도착 전까지 응급 처치 유지\n\n(안전관리시스템)`,
+      },
+      {
+        key: "현장통제",
+        label: "현장 통제 (출입 통제)",
+        defaultMsg: `[현장 출입 통제 지시]\n\n2024.06.25 14:35 사고 현장에 대한\n즉각적인 출입 통제를 실시하시기 바랍니다.\n\n- 사고 구역 접근 전면 차단\n- 통제선 설치 및 안내 요원 배치\n- 허가된 인원 외 출입 금지\n\n(안전관리시스템)`,
       },
       {
         key: "응급조치",
@@ -2291,6 +2424,24 @@ export default function App() {
     ];
 
     const allDone = Object.values(checklistDone).every(Boolean);
+
+    // 상급자 화면 진입 시 작업중지/119신고 자동 체크 처리
+    if (!directiveSent["작업중지"] || !directiveSent["신고119"]) {
+      const now = new Date();
+      const hhmm = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
+      if (!directiveSent["작업중지"]) {
+        setTimeout(() => {
+          setDirectiveSent(prev => ({ ...prev, 작업중지: true }));
+          setDirectiveTimes(prev => ({ ...prev, 작업중지: hhmm }));
+        }, 0);
+      }
+      if (!directiveSent["신고119"]) {
+        setTimeout(() => {
+          setDirectiveSent(prev => ({ ...prev, 신고119: true }));
+          setDirectiveTimes(prev => ({ ...prev, 신고119: hhmm }));
+        }, 0);
+      }
+    }
 
     const handleDirectiveOpen = (key, defaultMsg) => {
       // 처음 열 때 기본 문자 내용 세팅
@@ -2965,8 +3116,8 @@ export default function App() {
     const acc = selectedAccident;
     const DIRECTIVE_META = [
       { key: "작업중지", icon: "🚫", label: "작업중지 지시",         color: "#C53030" },
-      { key: "현장통제", icon: "🚧", label: "현장 통제 (출입 통제)", color: "#B7791F" },
       { key: "신고119",  icon: "🚑", label: "119 신고",              color: "#2B6CB0" },
+      { key: "현장통제", icon: "🚧", label: "현장 통제 (출입 통제)", color: "#B7791F" },
       { key: "응급조치", icon: "🏥", label: "응급조치 / 병원 이송",  color: "#6B46C1" },
       { key: "현장보존", icon: "🔒", label: "현장 보존 조치",        color: "#276749" },
     ];
