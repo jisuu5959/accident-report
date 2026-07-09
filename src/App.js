@@ -220,7 +220,19 @@ export default function App() {
     return () => supabase.removeChannel(channel);
   }, [userRole]);
 
-  // 현재 workType에 맞는 보고 대상 목록
+  // ── 상급자 화면 진입 시 작업중지/119신고 자동 체크 ───
+  useEffect(() => {
+    if (screen !== SCREENS.SUPERVISOR) return;
+    const now = new Date();
+    const hhmm = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
+    setChecklistDone(prev => ({ ...prev, 작업중지: true, 신고119: true }));
+    setDirectiveSent(prev => ({ ...prev, 작업중지: true, 신고119: true }));
+    setDirectiveTimes(prev => ({
+      ...prev,
+      작업중지: prev["작업중지"] || hhmm,
+      신고119:  prev["신고119"]  || hhmm,
+    }));
+  }, [screen]);
   const currentRecipients = RECIPIENTS_BY_TYPE[workType] || RECIPIENTS_BY_TYPE["유지보수"];
 
   const styles = {
@@ -2424,24 +2436,6 @@ export default function App() {
     ];
 
     const allDone = Object.values(checklistDone).every(Boolean);
-
-    // 상급자 화면 진입 시 작업중지/119신고 자동 체크 처리
-    if (!directiveSent["작업중지"] || !directiveSent["신고119"]) {
-      const now = new Date();
-      const hhmm = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
-      if (!directiveSent["작업중지"]) {
-        setTimeout(() => {
-          setDirectiveSent(prev => ({ ...prev, 작업중지: true }));
-          setDirectiveTimes(prev => ({ ...prev, 작업중지: hhmm }));
-        }, 0);
-      }
-      if (!directiveSent["신고119"]) {
-        setTimeout(() => {
-          setDirectiveSent(prev => ({ ...prev, 신고119: true }));
-          setDirectiveTimes(prev => ({ ...prev, 신고119: hhmm }));
-        }, 0);
-      }
-    }
 
     const handleDirectiveOpen = (key, defaultMsg) => {
       // 처음 열 때 기본 문자 내용 세팅
