@@ -2521,11 +2521,12 @@ export default function App() {
             </div>
 
             {CHECKLIST_ITEMS.map((item) => {
-              const done = checklistDone[item.key];
+              const AUTO_CHECKED = ["작업중지", "신고119"];
+              const done = AUTO_CHECKED.includes(item.key) ? true : !!checklistDone[item.key];
               const isOpen = activeDirective === item.key;
               const isEditing = directiveEditing[item.key];
               const text = directiveTexts[item.key] || item.defaultMsg;
-              const sent = directiveSent[item.key];
+              const sent = AUTO_CHECKED.includes(item.key) ? true : !!directiveSent[item.key];
 
               return (
                 <div key={item.key} style={{ marginBottom: 6 }}>
