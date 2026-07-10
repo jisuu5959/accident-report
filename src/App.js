@@ -129,11 +129,19 @@ export default function App() {
   const [checklistDone, setChecklistDone] = useState({
     작업중지: true, 신고119: true, 현장통제: false, 응급조치: false, 현장보존: false,
   });
+  const [directiveSent, setDirectiveSent] = useState(() => {
+    const now = new Date();
+    const hhmm = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
+    return { 작업중지: true, 신고119: true };
+  });
+  const [directiveTimes, setDirectiveTimes] = useState(() => {
+    const now = new Date();
+    const hhmm = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
+    return { 작업중지: hhmm, 신고119: hhmm };
+  });
   const [activeDirective, setActiveDirective] = useState(null);
   const [directiveTexts, setDirectiveTexts] = useState({});
   const [directiveEditing, setDirectiveEditing] = useState({});
-  const [directiveSent, setDirectiveSent] = useState({});
-  const [directiveTimes, setDirectiveTimes] = useState({});   // 지시 전송 시각
   // 현장작업자 조치 체크리스트
   const [workerChecklist, setWorkerChecklist] = useState({
     대피: false, 연락: false, 응급: false, 통제: false, 보존: false,
