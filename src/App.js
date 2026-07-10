@@ -171,6 +171,9 @@ export default function App() {
 
   const [showMockAlert, setShowMockAlert] = useState(false);
   const [isMock, setIsMock] = useState(false);
+  const [showHospitalInput, setShowHospitalInput] = useState(false);
+  const [hospitalName, setHospitalName] = useState("");
+  const [hospitalSubmitted, setHospitalSubmitted] = useState(false);
 
   const go = (s) => setScreen(s);
 
@@ -184,6 +187,13 @@ export default function App() {
         { event: "INSERT", schema: "public", table: "directives" },
         (payload) => {
           const directive = payload.new;
+
+          // 응급조치 병원 입력 요청
+          if (directive.action_key === "응급조치_병원입력") {
+            setShowHospitalInput(true);
+            return;
+          }
+
           const newNotif = {
             id: directive.id,
             title: `상급자 조치 지시`,
@@ -434,6 +444,98 @@ export default function App() {
     </div>
   ) : null;
 
+  const HospitalInputPopup = () => showHospitalInput ? (
+    <div style={{
+      position: "fixed", top: 0, left: "50%", transform: "translateX(-50%)",
+      width: 375, height: "100%", zIndex: 9998,
+      background: "rgba(0,0,0,0.6)",
+      display: "flex", alignItems: "center", justifyContent: "center", padding: "24px",
+    }}>
+      <div style={{
+        background: "#fff", borderRadius: 18, padding: "22px", width: "100%",
+        boxShadow: "0 8px 32px rgba(0,0,0,0.2)",
+      }}>
+        {/* 헤더 */}
+        <div style={{ textAlign: "center", marginBottom: 16 }}>
+          <div style={{ fontSize: 36, marginBottom: 8 }}>🏥</div>
+          <div style={{ fontSize: 16, fontWeight: 800, color: "#111", marginBottom: 4 }}>
+            병원 이송 정보 입력
+          </div>
+          <div style={{ fontSize: 13, color: "#666", lineHeight: 1.6 }}>
+            상급자가 응급조치/병원이송을 지시했습니다.<br />이송할 병원 이름을 입력해주세요.
+          </div>
+        </div>
+
+        {/* 병원 이름 입력 */}
+        {!hospitalSubmitted ? (
+          <>
+            <div style={{
+              border: "1.5px solid #E2E8F0", borderRadius: 10,
+              padding: "12px 14px", marginBottom: 14, background: "#F7FAFC",
+            }}>
+              <div style={{ fontSize: 12, color: "#888", marginBottom: 6 }}>병원 이름</div>
+              <input
+                value={hospitalName}
+                onChange={(e) => setHospitalName(e.target.value)}
+                placeholder="예: 서산중앙병원"
+                style={{
+                  width: "100%", border: "none", outline: "none",
+                  fontSize: 16, fontWeight: 600, color: "#111",
+                  background: "transparent",
+                }}
+                autoFocus
+              />
+            </div>
+
+            <button
+              onClick={async () => {
+                if (!hospitalName.trim()) return;
+                // Supabase에 병원 이름 저장
+                await supabase.from("directives").insert({
+                  accident_id: "2024-0625-001",
+                  action_key: "병원이름_입력완료",
+                  action_label: "병원 이송 정보",
+                  message: `이송 병원: ${hospitalName}`,
+                  supervisor_name: "현장 작업자",
+                });
+                setHospitalSubmitted(true);
+              }}
+              style={{
+                width: "100%", padding: "14px", background: "#E53E3E",
+                border: "none", borderRadius: 10, fontSize: 15,
+                fontWeight: 700, color: "#fff", cursor: "pointer",
+                opacity: hospitalName.trim() ? 1 : 0.4,
+              }}
+            >확인 — 병원 이름 전송</button>
+          </>
+        ) : (
+          <>
+            <div style={{
+              background: "#F0FFF4", border: "1px solid #9AE6B4",
+              borderRadius: 10, padding: "14px", marginBottom: 14, textAlign: "center",
+            }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "#276749", marginBottom: 4 }}>
+                ✅ 전송 완료
+              </div>
+              <div style={{ fontSize: 13, color: "#555" }}>
+                이송 병원: <strong>{hospitalName}</strong><br />
+                상급자와 상황실에 자동 전송됩니다.
+              </div>
+            </div>
+            <button
+              onClick={() => { setShowHospitalInput(false); setHospitalSubmitted(false); setHospitalName(""); }}
+              style={{
+                width: "100%", padding: "13px", background: "#276749",
+                border: "none", borderRadius: 10, fontSize: 14,
+                fontWeight: 700, color: "#fff", cursor: "pointer",
+              }}
+            >닫기</button>
+          </>
+        )}
+      </div>
+    </div>
+  ) : null;
+
   // ── 화면 00: 로그인 ──────────────────────────────────
   if (screen === SCREENS.LOGIN) {
 
@@ -499,7 +601,7 @@ export default function App() {
     };
 
     return (
-      <div style={styles.phone}><NotifBanner /><NotifPopup />
+      <div style={styles.phone}><NotifBanner /><NotifPopup /><HospitalInputPopup />
         <div style={styles.statusBar}><span>9:41</span><span>📶 🔋</span></div>
 
         <div style={{
@@ -723,7 +825,7 @@ export default function App() {
   // ── 화면 01: 메인 ──────────────────────────────────────
   if (screen === SCREENS.MAIN) {
     return (
-      <div style={styles.phone}><NotifBanner /><NotifPopup />
+      <div style={styles.phone}><NotifBanner /><NotifPopup /><HospitalInputPopup />
         <div style={styles.statusBar}>
           <span>9:41</span>
           <span>📶 🔋</span>
@@ -901,7 +1003,7 @@ export default function App() {
   // ── 화면 02: 사고 유형 선택 ──────────────────────────
   if (screen === SCREENS.ACCIDENT_TYPE) {
     return (
-      <div style={styles.phone}><NotifBanner /><NotifPopup />
+      <div style={styles.phone}><NotifBanner /><NotifPopup /><HospitalInputPopup />
         <div style={styles.statusBar}><span>9:41</span><span>📶 🔋</span></div>
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.MAIN)}>‹</button>
@@ -1014,7 +1116,7 @@ export default function App() {
     }
 
     return (
-      <div style={styles.phone}><NotifBanner /><NotifPopup />
+      <div style={styles.phone}><NotifBanner /><NotifPopup /><HospitalInputPopup />
         <div style={styles.statusBar}><span>9:41</span><span>📶 🔋</span></div>
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.ACCIDENT_TYPE)}>‹</button>
@@ -1153,7 +1255,7 @@ export default function App() {
   // ── 화면 04: 사고 내용 입력 ──────────────────────────
   if (screen === SCREENS.DETAILS) {
     return (
-      <div style={styles.phone}><NotifBanner /><NotifPopup />
+      <div style={styles.phone}><NotifBanner /><NotifPopup /><HospitalInputPopup />
         <div style={styles.statusBar}><span>9:41</span><span>📶 🔋</span></div>
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.LOCATION)}>‹</button>
@@ -1306,7 +1408,7 @@ export default function App() {
     };
 
     return (
-      <div style={styles.phone}><NotifBanner /><NotifPopup />
+      <div style={styles.phone}><NotifBanner /><NotifPopup /><HospitalInputPopup />
         <div style={styles.statusBar}><span>9:41</span><span>📶 🔋</span></div>
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.DETAILS)}>‹</button>
@@ -1484,7 +1586,7 @@ export default function App() {
     const totalCount = ACTION_ITEMS.length;
 
     return (
-      <div style={styles.phone}><NotifBanner /><NotifPopup />
+      <div style={styles.phone}><NotifBanner /><NotifPopup /><HospitalInputPopup />
         <div style={styles.statusBar}><span>9:41</span><span>📶 🔋</span></div>
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.WORKER_TIMELINE)}>‹</button>
@@ -1650,7 +1752,7 @@ export default function App() {
     const canSend = checkedRecipients.length > 0;
 
     return (
-      <div style={styles.phone}><NotifBanner /><NotifPopup />
+      <div style={styles.phone}><NotifBanner /><NotifPopup /><HospitalInputPopup />
         <div style={styles.statusBar}><span>9:41</span><span>📶 🔋</span></div>
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.PHOTOS)}>‹</button>
@@ -1780,7 +1882,7 @@ export default function App() {
   // ── 화면 07: 보고 완료 ──────────────────────────────
   if (screen === SCREENS.COMPLETE) {
     return (
-      <div style={styles.phone}><NotifBanner /><NotifPopup />
+      <div style={styles.phone}><NotifBanner /><NotifPopup /><HospitalInputPopup />
         <div style={styles.statusBar}><span>9:41</span><span>📶 🔋</span></div>
         <div style={{ flex: 1, overflowY: "auto", padding: "32px 24px 20px", display: "flex", flexDirection: "column", alignItems: "center" }}>
           {/* 완료 아이콘 */}
@@ -1924,7 +2026,7 @@ export default function App() {
     const allEvents = [...fixedEvents, ...workerActionEvents, ...sentDirectives, ...pendingDirectives];
 
     return (
-      <div style={styles.phone}><NotifBanner /><NotifPopup />
+      <div style={styles.phone}><NotifBanner /><NotifPopup /><HospitalInputPopup />
         <div style={styles.statusBar}><span>9:41</span><span>📶 🔋</span></div>
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.COMPLETE)}>‹</button>
@@ -2270,7 +2372,7 @@ export default function App() {
       : emergencyUsers.filter(u => emergencyTab === "전체" || u.work_type === emergencyTab || (!u.work_type && emergencyTab === "전체"));
 
     return (
-      <div style={styles.phone}><NotifBanner /><NotifPopup />
+      <div style={styles.phone}><NotifBanner /><NotifPopup /><HospitalInputPopup />
         <div style={styles.statusBar}><span>9:41</span><span>📶 🔋</span></div>
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.MAIN)}>‹</button>
@@ -2464,8 +2566,20 @@ export default function App() {
       setActiveDirective(null);
       setDirectiveEditing((prev) => ({ ...prev, [key]: false }));
 
-      // Supabase에 지시 저장 → Realtime으로 현장작업자에게 전달
       const item = CHECKLIST_ITEMS.find(it => it.key === key);
+
+      // 응급조치 지시 시 → 작업자에게 병원 이름 입력 요청 알림
+      if (key === "응급조치") {
+        await supabase.from("directives").insert({
+          accident_id: "2024-0625-001",
+          action_key: "응급조치_병원입력",
+          action_label: "병원 이름 입력 요청",
+          message: "이송할 병원 이름을 입력해주세요.",
+          supervisor_name: "김현당 팀장",
+        });
+      }
+
+      // Supabase에 지시 저장 → Realtime으로 현장작업자에게 전달
       await supabase.from("directives").insert({
         accident_id: "2024-0625-001",
         action_key: key,
@@ -2476,7 +2590,7 @@ export default function App() {
     };
 
     return (
-      <div style={styles.phone}><NotifBanner /><NotifPopup />
+      <div style={styles.phone}><NotifBanner /><NotifPopup /><HospitalInputPopup />
         <div style={styles.statusBar}><span>9:41</span><span>📶 🔋</span></div>
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.COMPLETE)}>‹</button>
@@ -2559,7 +2673,7 @@ export default function App() {
                         cursor: "pointer", fontWeight: 600, whiteSpace: "nowrap",
                       }}
                     >
-                      {done ? "✓ 전송완료" : isOpen ? "닫기" : "지시하기"}
+                      {done ? "✓ 완료" : isOpen ? "닫기" : "지시하기"}
                     </button>
                   </div>
 
@@ -2780,7 +2894,7 @@ export default function App() {
     const totalCount = CHECKLIST_META.length;
 
     return (
-      <div style={styles.phone}><NotifBanner /><NotifPopup />
+      <div style={styles.phone}><NotifBanner /><NotifPopup /><HospitalInputPopup />
         <div style={styles.statusBar}><span>9:41</span><span>📶 🔋</span></div>
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.SUPERVISOR)}>‹</button>
