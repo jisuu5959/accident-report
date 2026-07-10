@@ -170,6 +170,7 @@ export default function App() {
   const [notifBanner, setNotifBanner] = useState(null);      // 상단 배너 알림
 
   const [showMockAlert, setShowMockAlert] = useState(false);
+  const [isMock, setIsMock] = useState(false);
 
   const go = (s) => setScreen(s);
 
