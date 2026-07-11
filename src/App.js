@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { createClient } from "@supabase/supabase-js";
 
@@ -59,31 +60,91 @@ const smsMessages = [
     step: "1차 보고",
     from: "현장 → 팀장",
     time: "14:36",
-    content: "[중대재해 1차 보고]\n- 일시: 06/25 14:35\n- 장소: 서산 대산공장\n- 유형: 추락\n- 현장 작업자: 김철수\n\n즉시 확인 바랍니다.\n(안전관리시스템)",
+    content: "[중대재해 1차 보고]\n- 일시: 06/25 14:35\n- 장소: 서산 대산공장\n- 유형: 추락\n- 현장 작업자: 김철수\n\n즉시 확인 바랍니다.\n",
     color: "#E53E3E",
   },
   {
     step: "2차 보고",
     from: "팀장 → 차장",
     time: "14:37",
-    content: "[중대재해 2차 보고]\n- 일시: 06/25 14:35\n- 장소: 서산 대산공장\n- 유형: 추락\n- 팀장 확인 완료\n\n지시 및 조치 바랍니다.\n(안전관리시스템)",
+    content: "[중대재해 2차 보고]\n- 일시: 06/25 14:35\n- 장소: 서산 대산공장\n- 유형: 추락\n- 팀장 확인 완료\n\n지시 및 조치 바랍니다.\n",
     color: "#DD6B20",
   },
   {
     step: "3차 보고",
     from: "차장 → 부장",
     time: "14:39",
-    content: "[중대재해 3차 보고]\n- 일시: 06/25 14:35\n- 장소: 서산 대산공장\n- 유형: 추락\n- 현재 조치율: 60%\n\n확인 후 지시 바랍니다.\n(안전관리시스템)",
+    content: "[중대재해 3차 보고]\n- 일시: 06/25 14:35\n- 장소: 서산 대산공장\n- 유형: 추락\n- 현재 조치율: 60%\n\n확인 후 지시 바랍니다.\n",
     color: "#2B6CB0",
   },
   {
     step: "상황실 알림",
     from: "→ 상황실",
     time: "14:40",
-    content: "[중대재해 상황 알림]\n- 사고 ID: 2024-0625-001\n- 유형: 추락\n- 장소: 서시 대산공장\n- 현재 단계: 2차 보고\n\n상황실에서 확인 바랍니다.\n(안전관리시스템)",
+    content: "[중대재해 상황 알림]\n- 사고 ID: 2024-0625-001\n- 유형: 추락\n- 장소: 서시 대산공장\n- 현재 단계: 2차 보고\n\n상황실에서 확인 바랍니다.\n",
     color: "#553C9A",
   },
 ];
+
+// ── 보고 완료 화면 컴포넌트 ─────────────────────────
+function CompleteScreen({ go }) {
+  return (
+    <div style={{
+      width: "100%", maxWidth: 375, minHeight: "100vh",
+      background: "#fff", display: "flex", flexDirection: "column",
+      fontFamily: "'Apple SD Gothic Neo', sans-serif",
+    }}>
+      <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 16px 4px", fontSize: 12, fontWeight: 700 }}>
+        <span>9:41</span><span>📶 🔋</span>
+      </div>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "32px 24px" }}>
+        <div style={{
+          width: 80, height: 80, borderRadius: "50%", background: "#E53E3E",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: 36, color: "#fff", marginBottom: 20,
+        }}>✓</div>
+        <div style={{ fontSize: 22, fontWeight: 800, color: "#111", marginBottom: 8, textAlign: "center" }}>
+          1차 보고가 완료되었습니다.
+        </div>
+        <div style={{ fontSize: 14, color: "#666", textAlign: "center", lineHeight: 1.6, marginBottom: 32 }}>
+          보고 내용이 등록되었으며,<br />지정된 대상자에게 전송되었습니다.
+        </div>
+        <div style={{
+          width: "100%", background: "#FFF5F5", border: "1px solid #FED7D7",
+          borderRadius: 12, padding: "16px", marginBottom: 24,
+          display: "flex", gap: 10, alignItems: "flex-start",
+        }}>
+          <span style={{ fontSize: 18, flexShrink: 0 }}>⏳</span>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "#C53030", marginBottom: 4 }}>
+              상급자 조치 지시를 기다려주세요
+            </div>
+            <div style={{ fontSize: 12, color: "#744210", lineHeight: 1.6 }}>
+              상급자가 조치 지시를 하면 알림이 옵니다.<br />
+              알림을 확인하고 조치에 따라 대응해주세요.
+            </div>
+          </div>
+        </div>
+        <button
+          onClick={() => go(SCREENS.WORKER_TIMELINE)}
+          style={{
+            width: "100%", padding: "14px", background: "#1A365D",
+            border: "none", borderRadius: 10, fontSize: 14,
+            fontWeight: 700, color: "#fff", cursor: "pointer", marginBottom: 10,
+          }}
+        >📊 보고 현황 보기</button>
+        <button
+          onClick={() => go(SCREENS.MAIN)}
+          style={{
+            width: "100%", padding: "13px", background: "#fff",
+            border: "1.5px solid #ddd", borderRadius: 10, fontSize: 14,
+            fontWeight: 600, color: "#666", cursor: "pointer",
+          }}
+        >홈으로 이동</button>
+      </div>
+    </div>
+  );
+}
 
 export default function App() {
   const [screen, setScreen] = useState(SCREENS.LOGIN);
@@ -117,28 +178,24 @@ export default function App() {
   const [photoError, setPhotoError] = useState(false);
   const [checkedRecipients, setCheckedRecipients] = useState([]);
   const [actionStatus, setActionStatus] = useState({
-    stop: "idle",      // idle | done | partial
+    stop: "partial",   // 작업 중지 항목 하나 체크됨
     control: "idle",
     report119: "idle",
   });
   const [actionTimes, setActionTimes] = useState({}); // 조치 항목별 마지막 상태변경 시각
   // 세부 체크리스트 항목별 체크여부/체크시각 (key: "stop-0" 형태)
-  const [subItemChecked, setSubItemChecked] = useState({});
-  const [subItemTimes, setSubItemTimes] = useState({});
+  const [subItemChecked, setSubItemChecked] = useState({ "stop-0": true });
+  const [subItemTimes, setSubItemTimes] = useState(() => {
+    const now = new Date();
+    const hhmm = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
+    return { "stop-0": hhmm };
+  });
   // 상급자 체크리스트 state
   const [checklistDone, setChecklistDone] = useState({
-    작업중지: true, 신고119: true, 현장통제: false, 응급조치: false, 현장보존: false,
+    재지시대피: false, 현장보존: false, 병원이송: false,
   });
-  const [directiveSent, setDirectiveSent] = useState(() => {
-    const now = new Date();
-    const hhmm = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
-    return { 작업중지: true, 신고119: true };
-  });
-  const [directiveTimes, setDirectiveTimes] = useState(() => {
-    const now = new Date();
-    const hhmm = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
-    return { 작업중지: hhmm, 신고119: hhmm };
-  });
+  const [directiveSent, setDirectiveSent] = useState({});
+  const [directiveTimes, setDirectiveTimes] = useState({});
   const [activeDirective, setActiveDirective] = useState(null);
   const [directiveTexts, setDirectiveTexts] = useState({});
   const [directiveEditing, setDirectiveEditing] = useState({});
@@ -173,6 +230,7 @@ export default function App() {
 
   const [showMockAlert, setShowMockAlert] = useState(false);
   const [isMock, setIsMock] = useState(false);
+  const [mockCheck, setMockCheck] = useState({ stop: false, call119: false });
   const [showHospitalInput, setShowHospitalInput] = useState(false);
   const [hospitalName, setHospitalName] = useState("");
   const [hospitalSubmitted, setHospitalSubmitted] = useState(false);
@@ -248,19 +306,6 @@ export default function App() {
     return () => supabase.removeChannel(channel);
   }, [userRole]);
 
-  // ── 상급자 화면 진입 시 작업중지/119신고 자동 체크 ───
-  useEffect(() => {
-    if (screen !== SCREENS.SUPERVISOR) return;
-    const now = new Date();
-    const hhmm = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
-    setChecklistDone(prev => ({ ...prev, 작업중지: true, 신고119: true }));
-    setDirectiveSent(prev => ({ ...prev, 작업중지: true, 신고119: true }));
-    setDirectiveTimes(prev => ({
-      ...prev,
-      작업중지: prev["작업중지"] || hhmm,
-      신고119:  prev["신고119"]  || hhmm,
-    }));
-  }, [screen]);
   const currentRecipients = RECIPIENTS_BY_TYPE[workType] || RECIPIENTS_BY_TYPE["유지보수"];
 
   const styles = {
@@ -437,17 +482,22 @@ export default function App() {
             fontSize: 14, fontWeight: 600, cursor: "pointer", color: "#555",
           }}>나중에</button>
           <button onClick={async () => {
-            // 확인 완료 처리
+            const now = new Date();
+            const hhmm = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
+            // DB 확인 완료 처리
             await supabase.from("directives")
               .update({ is_confirmed: true, confirmed_at: new Date().toISOString() })
               .eq("id", activeNotif.id);
+            // 타임라인에 확인 기록 추가
+            setNotifications(prev => prev.map(n =>
+              n.id === activeNotif.id ? { ...n, confirmedAt: hhmm } : n
+            ));
             setActiveNotif(null);
-            setNotifications(prev => prev.filter(n => n.id !== activeNotif.id));
           }} style={{
-            flex: 2, padding: "13px", background: "#276749",
+            flex: 2, padding: "13px", background: "#E53E3E",
             border: "none", borderRadius: 10,
             fontSize: 14, fontWeight: 700, cursor: "pointer", color: "#fff",
-          }}>✓ 조치 완료 확인</button>
+          }}>✓ 확인했습니다</button>
         </div>
       </div>
     </div>
@@ -919,39 +969,68 @@ export default function App() {
 
                 {/* 지시사항 */}
                 <div style={{ padding: "20px 20px 8px" }}>
-                  <div style={{
-                    background: "#FFF5F5", border: "2px solid #E53E3E",
-                    borderRadius: 12, padding: "16px", marginBottom: 12,
-                    display: "flex", gap: 12, alignItems: "flex-start",
-                  }}>
-                    <span style={{ fontSize: 24, flexShrink: 0 }}>🚫</span>
-                    <div>
-                      <div style={{ fontSize: 15, fontWeight: 800, color: "#C53030", marginBottom: 4 }}>
-                        즉시 작업 중지
+
+                  {/* 작업 중지 체크 */}
+                  <button
+                    onClick={() => setMockCheck(prev => ({ ...prev, stop: !prev.stop }))}
+                    style={{
+                      width: "100%", background: mockCheck.stop ? "#FFF5F5" : "#fff",
+                      border: `2px solid ${mockCheck.stop ? "#E53E3E" : "#E2E8F0"}`,
+                      borderRadius: 12, padding: "14px", marginBottom: 10,
+                      cursor: "pointer", textAlign: "left",
+                      display: "flex", gap: 12, alignItems: "flex-start",
+                    }}
+                  >
+                    <div style={{
+                      width: 24, height: 24, borderRadius: 6, flexShrink: 0,
+                      background: mockCheck.stop ? "#E53E3E" : "#fff",
+                      border: `2px solid ${mockCheck.stop ? "#E53E3E" : "#CBD5E0"}`,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      marginTop: 2,
+                    }}>
+                      {mockCheck.stop && <span style={{ color: "#fff", fontSize: 14, fontWeight: 800 }}>✓</span>}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 15, fontWeight: 800, color: "#C53030", marginBottom: 4, display: "flex", alignItems: "center", gap: 8 }}>
+                        <span>🚫</span> 즉시 작업 중지
                       </div>
                       <div style={{ fontSize: 13, color: "#555", lineHeight: 1.6 }}>
                         현장 내 모든 작업을 즉시 중단하고<br />
                         작업자를 안전한 곳으로 대피시키세요.
                       </div>
                     </div>
-                  </div>
+                  </button>
 
-                  <div style={{
-                    background: "#EBF8FF", border: "2px solid #2B6CB0",
-                    borderRadius: 12, padding: "16px", marginBottom: 20,
-                    display: "flex", gap: 12, alignItems: "flex-start",
-                  }}>
-                    <span style={{ fontSize: 24, flexShrink: 0 }}>🚑</span>
-                    <div>
-                      <div style={{ fontSize: 15, fontWeight: 800, color: "#2B6CB0", marginBottom: 4 }}>
-                        119 즉시 신고
+                  {/* 119 신고 체크 */}
+                  <button
+                    onClick={() => setMockCheck(prev => ({ ...prev, call119: !prev.call119 }))}
+                    style={{
+                      width: "100%", background: mockCheck.call119 ? "#EBF8FF" : "#fff",
+                      border: `2px solid ${mockCheck.call119 ? "#2B6CB0" : "#E2E8F0"}`,
+                      borderRadius: 12, padding: "14px", marginBottom: 16,
+                      cursor: "pointer", textAlign: "left",
+                      display: "flex", gap: 12, alignItems: "flex-start",
+                    }}
+                  >
+                    <div style={{
+                      width: 24, height: 24, borderRadius: 6, flexShrink: 0,
+                      background: mockCheck.call119 ? "#2B6CB0" : "#fff",
+                      border: `2px solid ${mockCheck.call119 ? "#2B6CB0" : "#CBD5E0"}`,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      marginTop: 2,
+                    }}>
+                      {mockCheck.call119 && <span style={{ color: "#fff", fontSize: 14, fontWeight: 800 }}>✓</span>}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 15, fontWeight: 800, color: "#2B6CB0", marginBottom: 4, display: "flex", alignItems: "center", gap: 8 }}>
+                        <span>🚑</span> 119 즉시 신고
                       </div>
                       <div style={{ fontSize: 13, color: "#555", lineHeight: 1.6 }}>
                         119에 신고하고 부상자 여부를<br />
                         확인 후 응급처치를 시행하세요.
                       </div>
                     </div>
-                  </div>
+                  </button>
 
                   <div style={{
                     background: "#FFFBEB", border: "1px solid #F6E05E",
@@ -965,20 +1044,23 @@ export default function App() {
 
                   <button
                     onClick={() => {
+                      if (!mockCheck.stop || !mockCheck.call119) return;
                       setShowMockAlert(false);
                       go(SCREENS.ACCIDENT_TYPE);
                     }}
                     style={{
-                      width: "100%", padding: "16px", background: "#E53E3E",
+                      width: "100%", padding: "16px", background: (mockCheck.stop && mockCheck.call119) ? "#E53E3E" : "#CBD5E0",
                       border: "none", borderRadius: 12, fontSize: 16,
-                      fontWeight: 800, color: "#fff", cursor: "pointer",
+                      fontWeight: 800, color: "#fff", cursor: (mockCheck.stop && mockCheck.call119) ? "pointer" : "not-allowed",
                       marginBottom: 12,
-                      boxShadow: "0 4px 12px rgba(229,62,62,0.35)",
+                      boxShadow: (mockCheck.stop && mockCheck.call119) ? "0 4px 12px rgba(229,62,62,0.35)" : "none",
                     }}
-                  >확인 — 훈련 시작하기 →</button>
+                  >
+                    {(mockCheck.stop && mockCheck.call119) ? "확인 — 훈련 시작하기 →" : "위 항목을 모두 확인해주세요"}
+                  </button>
 
                   <button
-                    onClick={() => { setIsMock(false); setShowMockAlert(false); }}
+                    onClick={() => { setIsMock(false); setShowMockAlert(false); setMockCheck({ stop: false, call119: false }); }}
                     style={{
                       width: "100%", padding: "12px", background: "none",
                       border: "none", fontSize: 13, color: "#aaa",
@@ -1025,10 +1107,10 @@ export default function App() {
             {acidentTypes.map((t) => (
               <button
                 key={t.id}
-                onClick={() => setSelectedType(t.id)}
+                onClick={() => setSelectedType(t.label)}
                 style={{
-                  background: selectedType === t.id ? "#FFF5F5" : "#FAFAFA",
-                  border: `2px solid ${selectedType === t.id ? "#E53E3E" : "#EFEFEF"}`,
+                  background: selectedType === t.label ? "#FFF5F5" : "#FAFAFA",
+                  border: `2px solid ${selectedType === t.label ? "#E53E3E" : "#EFEFEF"}`,
                   borderRadius: 12,
                   padding: "20px 12px",
                   cursor: "pointer",
@@ -1073,17 +1155,30 @@ export default function App() {
           try {
             const res = await fetch(
               `https://dapi.kakao.com/v2/local/geo/coord2address.json?x=${lng}&y=${lat}`,
-              { headers: { Authorization: `KakaoAK ${KAKAO_KEY}` } }
+              { headers: { Authorization: `KakaoAK 79643dd3b407eebf29d5139a7c5543de` } }
             );
             const data = await res.json();
             if (data.documents && data.documents.length > 0) {
               const addr = data.documents[0].address;
               setGpsAddress(addr.address_name);
             } else {
-              setGpsAddress(`위도 ${lat.toFixed(4)}, 경도 ${lng.toFixed(4)}`);
+              // 카카오 실패 시 nominatim 사용
+              const res2 = await fetch(
+                `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=ko`
+              );
+              const data2 = await res2.json();
+              setGpsAddress(data2.display_name || `위도 ${lat.toFixed(4)}, 경도 ${lng.toFixed(4)}`);
             }
           } catch {
-            setGpsAddress(`위도 ${lat.toFixed(4)}, 경도 ${lng.toFixed(4)}`);
+            try {
+              const res2 = await fetch(
+                `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=ko`
+              );
+              const data2 = await res2.json();
+              setGpsAddress(data2.display_name || `위도 ${lat.toFixed(4)}, 경도 ${lng.toFixed(4)}`);
+            } catch {
+              setGpsAddress(`위도 ${lat.toFixed(4)}, 경도 ${lng.toFixed(4)}`);
+            }
           }
           setGpsLoading(false);
         },
@@ -1890,78 +1985,16 @@ export default function App() {
 
   // ── 화면 07: 보고 완료 ──────────────────────────────
   if (screen === SCREENS.COMPLETE) {
-    return (
-      <div style={styles.phone}><NotifBanner /><NotifPopup /><HospitalInputPopup />
-        <div style={styles.statusBar}><span>9:41</span><span>📶 🔋</span></div>
-        <div style={{ flex: 1, overflowY: "auto", padding: "32px 24px 20px", display: "flex", flexDirection: "column", alignItems: "center" }}>
-          {/* 완료 아이콘 */}
-          <div style={{
-            width: 80, height: 80, borderRadius: "50%", background: "#E53E3E",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 36, color: "#fff", marginBottom: 20,
-          }}>✓</div>
-          <div style={{ fontSize: 22, fontWeight: 800, color: "#111", marginBottom: 8, textAlign: "center" }}>
-            1차 보고가 완료되었습니다.
-          </div>
-          <div style={{ fontSize: 14, color: "#666", textAlign: "center", lineHeight: 1.6, marginBottom: 28 }}>
-            보고 내용이 등록되었으며,<br />지정된 대상자에게 전송되었습니다.
-          </div>
-
-          {/* 다음 단계 안내 카드 */}
-          <div style={{
-            width: "100%", background: "#FFF5F5", border: "1px solid #FED7D7",
-            borderRadius: 12, padding: "16px",
-            display: "flex", gap: 10, alignItems: "flex-start",
-          }}>
-            <span style={{ fontSize: 18, flexShrink: 0 }}>⏳</span>
-            <div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: "#C53030", marginBottom: 4 }}>
-                다음 단계: 긴급 조치 현황 입력
-              </div>
-              <div style={{ fontSize: 12, color: "#744210", lineHeight: 1.6 }}>
-                작업 중지, 현장 통제, 119 신고 등 현재까지 진행된 조치를 입력해주세요. 조치/미조치를 확인할 때마다 시각이 자동으로 기록됩니다.
-              </div>
-            </div>
-          </div>
-        </div>
-        <div style={{ padding: "0 24px 40px", display: "flex", flexDirection: "column", gap: 12 }}>
-          <button
-            style={{
-              width: "100%", padding: "15px", background: "#E53E3E",
-              border: "none", borderRadius: 12, fontSize: 16,
-              fontWeight: 700, cursor: "pointer", color: "#fff",
-              display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-            }}
-            onClick={() => go(SCREENS.ACTIONS)}
-          >🚨 긴급 조치 현황 입력하기</button>
-          <button
-            style={{
-              width: "100%", padding: "15px", background: "#1A365D",
-              border: "none", borderRadius: 12, fontSize: 15,
-              fontWeight: 700, cursor: "pointer", color: "#fff",
-              display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-            }}
-            onClick={() => go(SCREENS.WORKER_TIMELINE)}
-          >📊 보고 현황 바로 보기</button>
-          <button style={{
-            width: "100%", padding: "13px", background: "#fff",
-            border: "1.5px solid #ddd", borderRadius: 12, fontSize: 14,
-            fontWeight: 600, cursor: "pointer", color: "#666",
-          }} onClick={goHome}>홈으로 이동</button>
-        </div>
-      </div>
-    );
+    return <CompleteScreen go={go} />;
   }
 
   // ── 화면 07-B: 현장작업자 보고현황 (타임라인 + 상급자 조치 지시) ─
   if (screen === SCREENS.WORKER_TIMELINE) {
 
     const SUPERVISOR_ITEMS = [
-      { key: "작업중지", icon: "🚫", color: "#C53030", label: "작업중지 지시" },
-      { key: "신고119",  icon: "🚑", color: "#2B6CB0", label: "119 신고" },
-      { key: "현장통제", icon: "🚧", color: "#B7791F", label: "현장 통제 (출입 통제)" },
-      { key: "응급조치", icon: "🏥", color: "#6B46C1", label: "응급조치 / 병원 이송" },
-      { key: "현장보존", icon: "🔒", color: "#276749", label: "현장 보존 조치" },
+      { key: "재지시대피", icon: "🚫", color: "#C53030", label: "작업중지 재지시 + 대피 요청" },
+      { key: "현장보존",   icon: "🔒", color: "#276749", label: "현장 보존" },
+      { key: "병원이송",   icon: "🏥", color: "#6B46C1", label: "병원 이송" },
     ];
 
     const sentCount = SUPERVISOR_ITEMS.filter(it => directiveSent[it.key]).length;
@@ -2032,7 +2065,20 @@ export default function App() {
         pending: true,
       }));
 
-    const allEvents = [...fixedEvents, ...workerActionEvents, ...sentDirectives, ...pendingDirectives];
+    // 작업자가 확인한 지시 알림을 타임라인 이벤트로 변환
+    const confirmedNotifs = notifications
+      .filter(n => n.confirmedAt)
+      .sort((a, b) => (a.confirmedAt || "").localeCompare(b.confirmedAt || ""))
+      .map(n => ({
+        time: n.confirmedAt,
+        icon: "✓", color: "#276749",
+        title: `${n.actionLabel} — 확인 완료`,
+        desc: "현장 작업자 확인",
+        sub: "",
+        pending: false,
+      }));
+
+    const allEvents = [...fixedEvents, ...workerActionEvents, ...confirmedNotifs, ...sentDirectives, ...pendingDirectives];
 
     return (
       <div style={styles.phone}><NotifBanner /><NotifPopup /><HospitalInputPopup />
@@ -2541,29 +2587,19 @@ export default function App() {
 
     const CHECKLIST_ITEMS = [
       {
-        key: "작업중지",
-        label: "작업중지 지시",
-        defaultMsg: `[작업중지 지시]\n\n2024.06.25 14:35 발생한 추락 사고와 관련하여\n현장 내 모든 작업을 즉시 중지하시기 바랍니다.\n\n- 진행 중인 모든 작업 즉시 중단\n- 작업자 안전지대로 대피\n- 추가 지시 있을 때까지 대기\n\n(안전관리시스템)`,
-      },
-      {
-        key: "신고119",
-        label: "119 신고",
-        defaultMsg: `[119 신고 요청]\n\n2024.06.25 14:35 충청남도 서산시 대산읍\n현장에서 추락 사고가 발생하였습니다.\n\n- 부상자 발생 (응급 처치 필요)\n- 119 즉시 신고 요청\n- 구급대 도착 전까지 응급 처치 유지\n\n(안전관리시스템)`,
-      },
-      {
-        key: "현장통제",
-        label: "현장 통제 (출입 통제)",
-        defaultMsg: `[현장 출입 통제 지시]\n\n2024.06.25 14:35 사고 현장에 대한\n즉각적인 출입 통제를 실시하시기 바랍니다.\n\n- 사고 구역 접근 전면 차단\n- 통제선 설치 및 안내 요원 배치\n- 허가된 인원 외 출입 금지\n\n(안전관리시스템)`,
-      },
-      {
-        key: "응급조치",
-        label: "응급조치 / 병원 이송",
-        defaultMsg: `[응급조치 및 병원 이송 지시]\n\n부상자에 대한 즉각적인 응급조치 및\n병원 이송을 지시합니다.\n\n- 현장 응급 처치 즉시 시행\n- 인근 응급실로 신속 이송\n- 이송 병원 및 상태 보고 요망\n\n(안전관리시스템)`,
+        key: "재지시대피",
+        label: "작업중지 재지시 + 대피 요청",
+        defaultMsg: `[작업중지 재지시 및 대피 요청]\n\n2024.06.25 14:35 발생한 추락 사고와 관련하여\n작업중지를 재지시하고 2차 사고 예방을 위해\n모든 작업자의 즉각적인 대피를 요청합니다.\n\n- 현장 내 모든 작업 즉시 중단\n- 전 작업자 안전지대로 대피\n- 사고 구역 접근 전면 금지\n- 추가 지시 있을 때까지 대기\n\n`,
       },
       {
         key: "현장보존",
-        label: "현장 보존 조치",
-        defaultMsg: `[현장 보존 지시]\n\n사고 조사를 위한 현장 보존을\n철저히 유지하시기 바랍니다.\n\n- 사고 현장 원형 그대로 보존\n- 장비·자재 이동 금지\n- 사진 및 영상 추가 기록 요망\n- 목격자 확보 및 대기\n\n(안전관리시스템)`,
+        label: "현장 보존",
+        defaultMsg: `[현장 보존 지시]\n\n사고 조사를 위한 현장 보존을\n철저히 유지하시기 바랍니다.\n\n- 사고 현장 원형 그대로 보존\n- 장비·자재 이동 금지\n- 사진 및 영상 추가 기록 요망\n- 목격자 확보 및 대기\n\n`,
+      },
+      {
+        key: "병원이송",
+        label: "병원 이송",
+        defaultMsg: `[병원 이송 지시]\n\n부상자에 대한 즉각적인 응급조치 및\n병원 이송을 지시합니다.\n\n- 현장 응급 처치 즉시 시행\n- 인근 응급실로 신속 이송\n- 이송 병원 및 상태 보고 요망\n\n`,
       },
     ];
 
@@ -2590,7 +2626,7 @@ export default function App() {
       const item = CHECKLIST_ITEMS.find(it => it.key === key);
 
       // 응급조치 지시 시 → 작업자에게 병원 이름 입력 요청 알림
-      if (key === "응급조치") {
+      if (key === "병원이송") {
         await supabase.from("directives").insert({
           accident_id: "2024-0625-001",
           action_key: "응급조치_병원입력",
@@ -2614,7 +2650,7 @@ export default function App() {
       <div style={styles.phone}><NotifBanner /><NotifPopup /><HospitalInputPopup />
         <div style={styles.statusBar}><span>9:41</span><span>📶 🔋</span></div>
         <div style={styles.header}>
-          <button style={styles.backBtn} onClick={() => go(SCREENS.COMPLETE)}>‹</button>
+          <button style={styles.backBtn} onClick={() => go(SCREENS.SUPERVISOR_DASHBOARD)}>‹</button>
           <span style={styles.headerTitle}>사고 상세 정보</span>
           <span />
         </div>
@@ -2657,12 +2693,11 @@ export default function App() {
             </div>
 
             {CHECKLIST_ITEMS.map((item) => {
-              const AUTO_CHECKED = ["작업중지", "신고119"];
-              const done = AUTO_CHECKED.includes(item.key) ? true : !!checklistDone[item.key];
+              const done = !!checklistDone[item.key];
               const isOpen = activeDirective === item.key;
               const isEditing = directiveEditing[item.key];
               const text = directiveTexts[item.key] || item.defaultMsg;
-              const sent = AUTO_CHECKED.includes(item.key) ? true : !!directiveSent[item.key];
+              const sent = !!directiveSent[item.key];
 
               return (
                 <div key={item.key} style={{ marginBottom: 6 }}>
@@ -2772,77 +2807,6 @@ export default function App() {
               );
             })}
 
-            {/* 전체 완료 버튼 */}
-            <button
-              onClick={() => {
-                const all = {};
-                CHECKLIST_ITEMS.forEach(({ key }) => { all[key] = true; });
-                setChecklistDone(all);
-                setActiveDirective(null);
-              }}
-              style={{
-                ...styles.redBtn, marginTop: 10, padding: "11px", fontSize: 14,
-                background: allDone ? "#2F855A" : "#E53E3E",
-              }}
-            >
-              {allDone ? "✓ 모든 지시 완료" : "전체 완료 처리"}
-            </button>
-          </div>
-
-          {/* ── 보고 및 알림 — 실시간 확인 시각 ── */}
-          <div style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: "#111", marginBottom: 12 }}>보고 및 알림</div>
-            {[
-              { step: "1차 보고", role: "현장 작업자", name: "김철수 작업자", sent: "14:36" },
-              { step: "2차 보고", role: "현장책임자",  name: "김현당 팀장",   sent: "14:37" },
-              { step: "3차 보고", role: "안전관리자",  name: "이인판 차장",   sent: "14:39" },
-              { step: "4차 보고", role: "사업당 관리자", name: "박관리 부장", sent: "14:40" },
-              { step: "상황실",   role: "상황실",       name: "안전상황실",   sent: "14:40" },
-            ].map((r) => {
-              const confirmed = reportConfirmed[r.name];
-              return (
-                <div key={r.name} style={{
-                  display: "flex", alignItems: "center", gap: 10,
-                  padding: "10px 0", borderBottom: "1px solid #F0F0F0",
-                }}>
-                  {/* 상태 아이콘 */}
-                  <div style={{
-                    width: 30, height: 30, borderRadius: "50%", flexShrink: 0,
-                    background: confirmed ? "#E53E3E" : "#EDF2F7",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    fontSize: 13, color: confirmed ? "#fff" : "#A0AEC0",
-                  }}>{confirmed ? "✓" : "○"}</div>
-
-                  {/* 이름/역할 */}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: "#111" }}>{r.name}</div>
-                    <div style={{ fontSize: 11, color: "#888", marginTop: 1 }}>{r.step} · {r.role}</div>
-                  </div>
-
-                  {/* 시각 정보 */}
-                  <div style={{ textAlign: "right", flexShrink: 0 }}>
-                    <div style={{ fontSize: 11, color: "#aaa" }}>발송 {r.sent}</div>
-                    {confirmed
-                      ? <div style={{ fontSize: 12, fontWeight: 700, color: "#E53E3E", marginTop: 1 }}>확인 {confirmed}</div>
-                      : <button
-                          onClick={() => {
-                            const now = new Date();
-                            const hhmm = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
-                            setReportConfirmed((prev) => ({ ...prev, [r.name]: hhmm }));
-                          }}
-                          style={{
-                            marginTop: 3, background: "#F7FAFC", border: "1px solid #CBD5E0",
-                            borderRadius: 5, padding: "2px 8px", fontSize: 11,
-                            color: "#555", cursor: "pointer", fontWeight: 600,
-                          }}
-                        >확인</button>
-                    }
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
           {/* ── 보고 현황 버튼 ── */}
           <button
             onClick={() => go(SCREENS.TIMELINE)}
@@ -2864,11 +2828,9 @@ export default function App() {
   if (screen === SCREENS.TIMELINE) {
 
     const CHECKLIST_META = [
-      { key: "작업중지", label: "작업중지 지시",          icon: "🚫", color: "#C53030" },
-      { key: "현장통제", label: "현장 통제 (출입 통제)",  icon: "🚧", color: "#B7791F" },
-      { key: "신고119",  label: "119 신고",               icon: "🚑", color: "#2B6CB0" },
-      { key: "응급조치", label: "응급조치 / 병원 이송",   icon: "🏥", color: "#6B46C1" },
-      { key: "현장보존", label: "현장 보존 조치",          icon: "🔒", color: "#276749" },
+      { key: "재지시대피", label: "작업중지 재지시 + 대피 요청", icon: "🚫", color: "#C53030" },
+      { key: "현장보존", label: "현장 보존", icon: "🔒", color: "#276749" },
+      { key: "병원이송", label: "병원 이송", icon: "🏥", color: "#6B46C1" },
     ];
 
     // 고정 이벤트 (사고 발생 + 보고 접수)
@@ -3254,11 +3216,9 @@ export default function App() {
   if (screen === SCREENS.SITUATION_DETAIL && selectedAccident) {
     const acc = selectedAccident;
     const DIRECTIVE_META = [
-      { key: "작업중지", icon: "🚫", label: "작업중지 지시",         color: "#C53030" },
-      { key: "신고119",  icon: "🚑", label: "119 신고",              color: "#2B6CB0" },
-      { key: "현장통제", icon: "🚧", label: "현장 통제 (출입 통제)", color: "#B7791F" },
-      { key: "응급조치", icon: "🏥", label: "응급조치 / 병원 이송",  color: "#6B46C1" },
-      { key: "현장보존", icon: "🔒", label: "현장 보존 조치",        color: "#276749" },
+      { key: "재지시대피", icon: "🚫", label: "작업중지 재지시 + 대피 요청", color: "#C53030" },
+      { key: "현장보존",   icon: "🔒", label: "현장 보존",                   color: "#276749" },
+      { key: "병원이송",   icon: "🏥", label: "병원 이송",                   color: "#6B46C1" },
     ];
     const directiveDone = Object.values(acc.directives).filter(Boolean).length;
 
