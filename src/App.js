@@ -197,18 +197,10 @@ export default function App() {
   });
   // 상급자 체크리스트 state
   const [checklistDone, setChecklistDone] = useState({
-    작업중지: true, 신고119: true, 현장통제: false, 응급조치: false, 현장보존: false,
+    재지시대피: false, 현장보존: false, 병원이송: false,
   });
-  const [directiveSent, setDirectiveSent] = useState(() => {
-    const now = new Date();
-    const hhmm = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
-    return { 작업중지: true, 신고119: true };
-  });
-  const [directiveTimes, setDirectiveTimes] = useState(() => {
-    const now = new Date();
-    const hhmm = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
-    return { 작업중지: hhmm, 신고119: hhmm };
-  });
+  const [directiveSent, setDirectiveSent] = useState({});
+  const [directiveTimes, setDirectiveTimes] = useState({});
   const [activeDirective, setActiveDirective] = useState(null);
   const [directiveTexts, setDirectiveTexts] = useState({});
   const [directiveEditing, setDirectiveEditing] = useState({});
@@ -319,19 +311,6 @@ export default function App() {
     return () => supabase.removeChannel(channel);
   }, [userRole]);
 
-  // ── 상급자 화면 진입 시 작업중지/119신고 자동 체크 ───
-  useEffect(() => {
-    if (screen !== SCREENS.SUPERVISOR) return;
-    const now = new Date();
-    const hhmm = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
-    setChecklistDone(prev => ({ ...prev, 작업중지: true, 신고119: true }));
-    setDirectiveSent(prev => ({ ...prev, 작업중지: true, 신고119: true }));
-    setDirectiveTimes(prev => ({
-      ...prev,
-      작업중지: prev["작업중지"] || hhmm,
-      신고119:  prev["신고119"]  || hhmm,
-    }));
-  }, [screen]);
   const currentRecipients = RECIPIENTS_BY_TYPE[workType] || RECIPIENTS_BY_TYPE["유지보수"];
 
   const styles = {
@@ -2013,11 +1992,9 @@ export default function App() {
   if (screen === SCREENS.WORKER_TIMELINE) {
 
     const SUPERVISOR_ITEMS = [
-      { key: "작업중지", icon: "🚫", color: "#C53030", label: "작업중지 지시" },
-      { key: "신고119",  icon: "🚑", color: "#2B6CB0", label: "119 신고" },
-      { key: "현장통제", icon: "🚧", color: "#B7791F", label: "현장 통제 (출입 통제)" },
-      { key: "응급조치", icon: "🏥", color: "#6B46C1", label: "응급조치 / 병원 이송" },
-      { key: "현장보존", icon: "🔒", color: "#276749", label: "현장 보존 조치" },
+      { key: "재지시대피", icon: "🚫", color: "#C53030", label: "작업중지 재지시 + 대피 요청" },
+      { key: "현장보존",   icon: "🔒", color: "#276749", label: "현장 보존" },
+      { key: "병원이송",   icon: "🏥", color: "#6B46C1", label: "병원 이송" },
     ];
 
     const sentCount = SUPERVISOR_ITEMS.filter(it => directiveSent[it.key]).length;
@@ -2597,29 +2574,19 @@ export default function App() {
 
     const CHECKLIST_ITEMS = [
       {
-        key: "작업중지",
-        label: "작업중지 지시",
-        defaultMsg: `[작업중지 지시]\n\n2024.06.25 14:35 발생한 추락 사고와 관련하여\n현장 내 모든 작업을 즉시 중지하시기 바랍니다.\n\n- 진행 중인 모든 작업 즉시 중단\n- 작업자 안전지대로 대피\n- 추가 지시 있을 때까지 대기\n\n(안전관리시스템)`,
-      },
-      {
-        key: "신고119",
-        label: "119 신고",
-        defaultMsg: `[119 신고 요청]\n\n2024.06.25 14:35 충청남도 서산시 대산읍\n현장에서 추락 사고가 발생하였습니다.\n\n- 부상자 발생 (응급 처치 필요)\n- 119 즉시 신고 요청\n- 구급대 도착 전까지 응급 처치 유지\n\n(안전관리시스템)`,
-      },
-      {
-        key: "현장통제",
-        label: "현장 통제 (출입 통제)",
-        defaultMsg: `[현장 출입 통제 지시]\n\n2024.06.25 14:35 사고 현장에 대한\n즉각적인 출입 통제를 실시하시기 바랍니다.\n\n- 사고 구역 접근 전면 차단\n- 통제선 설치 및 안내 요원 배치\n- 허가된 인원 외 출입 금지\n\n(안전관리시스템)`,
-      },
-      {
-        key: "응급조치",
-        label: "응급조치 / 병원 이송",
-        defaultMsg: `[응급조치 및 병원 이송 지시]\n\n부상자에 대한 즉각적인 응급조치 및\n병원 이송을 지시합니다.\n\n- 현장 응급 처치 즉시 시행\n- 인근 응급실로 신속 이송\n- 이송 병원 및 상태 보고 요망\n\n(안전관리시스템)`,
+        key: "재지시대피",
+        label: "작업중지 재지시 + 대피 요청",
+        defaultMsg: `[작업중지 재지시 및 대피 요청]\n\n2024.06.25 14:35 발생한 추락 사고와 관련하여\n작업중지를 재지시하고 2차 사고 예방을 위해\n모든 작업자의 즉각적인 대피를 요청합니다.\n\n- 현장 내 모든 작업 즉시 중단\n- 전 작업자 안전지대로 대피\n- 사고 구역 접근 전면 금지\n- 추가 지시 있을 때까지 대기\n\n(안전관리시스템)`,
       },
       {
         key: "현장보존",
-        label: "현장 보존 조치",
+        label: "현장 보존",
         defaultMsg: `[현장 보존 지시]\n\n사고 조사를 위한 현장 보존을\n철저히 유지하시기 바랍니다.\n\n- 사고 현장 원형 그대로 보존\n- 장비·자재 이동 금지\n- 사진 및 영상 추가 기록 요망\n- 목격자 확보 및 대기\n\n(안전관리시스템)`,
+      },
+      {
+        key: "병원이송",
+        label: "병원 이송",
+        defaultMsg: `[병원 이송 지시]\n\n부상자에 대한 즉각적인 응급조치 및\n병원 이송을 지시합니다.\n\n- 현장 응급 처치 즉시 시행\n- 인근 응급실로 신속 이송\n- 이송 병원 및 상태 보고 요망\n\n(안전관리시스템)`,
       },
     ];
 
@@ -2646,7 +2613,7 @@ export default function App() {
       const item = CHECKLIST_ITEMS.find(it => it.key === key);
 
       // 응급조치 지시 시 → 작업자에게 병원 이름 입력 요청 알림
-      if (key === "응급조치") {
+      if (key === "병원이송") {
         await supabase.from("directives").insert({
           accident_id: "2024-0625-001",
           action_key: "응급조치_병원입력",
@@ -2713,12 +2680,11 @@ export default function App() {
             </div>
 
             {CHECKLIST_ITEMS.map((item) => {
-              const AUTO_CHECKED = ["작업중지", "신고119"];
-              const done = AUTO_CHECKED.includes(item.key) ? true : !!checklistDone[item.key];
+              const done = !!checklistDone[item.key];
               const isOpen = activeDirective === item.key;
               const isEditing = directiveEditing[item.key];
               const text = directiveTexts[item.key] || item.defaultMsg;
-              const sent = AUTO_CHECKED.includes(item.key) ? true : !!directiveSent[item.key];
+              const sent = !!directiveSent[item.key];
 
               return (
                 <div key={item.key} style={{ marginBottom: 6 }}>
@@ -2843,60 +2809,6 @@ export default function App() {
             >
               {allDone ? "✓ 모든 지시 완료" : "전체 완료 처리"}
             </button>
-          </div>
-
-          {/* ── 보고 및 알림 — 실시간 확인 시각 ── */}
-          <div style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: "#111", marginBottom: 12 }}>보고 및 알림</div>
-            {[
-              { step: "1차 보고", role: "현장 작업자", name: "김철수 작업자", sent: "14:36" },
-              { step: "2차 보고", role: "현장책임자",  name: "김현당 팀장",   sent: "14:37" },
-              { step: "3차 보고", role: "안전관리자",  name: "이인판 차장",   sent: "14:39" },
-              { step: "4차 보고", role: "사업당 관리자", name: "박관리 부장", sent: "14:40" },
-              { step: "상황실",   role: "상황실",       name: "안전상황실",   sent: "14:40" },
-            ].map((r) => {
-              const confirmed = reportConfirmed[r.name];
-              return (
-                <div key={r.name} style={{
-                  display: "flex", alignItems: "center", gap: 10,
-                  padding: "10px 0", borderBottom: "1px solid #F0F0F0",
-                }}>
-                  {/* 상태 아이콘 */}
-                  <div style={{
-                    width: 30, height: 30, borderRadius: "50%", flexShrink: 0,
-                    background: confirmed ? "#E53E3E" : "#EDF2F7",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    fontSize: 13, color: confirmed ? "#fff" : "#A0AEC0",
-                  }}>{confirmed ? "✓" : "○"}</div>
-
-                  {/* 이름/역할 */}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: "#111" }}>{r.name}</div>
-                    <div style={{ fontSize: 11, color: "#888", marginTop: 1 }}>{r.step} · {r.role}</div>
-                  </div>
-
-                  {/* 시각 정보 */}
-                  <div style={{ textAlign: "right", flexShrink: 0 }}>
-                    <div style={{ fontSize: 11, color: "#aaa" }}>발송 {r.sent}</div>
-                    {confirmed
-                      ? <div style={{ fontSize: 12, fontWeight: 700, color: "#E53E3E", marginTop: 1 }}>확인 {confirmed}</div>
-                      : <button
-                          onClick={() => {
-                            const now = new Date();
-                            const hhmm = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
-                            setReportConfirmed((prev) => ({ ...prev, [r.name]: hhmm }));
-                          }}
-                          style={{
-                            marginTop: 3, background: "#F7FAFC", border: "1px solid #CBD5E0",
-                            borderRadius: 5, padding: "2px 8px", fontSize: 11,
-                            color: "#555", cursor: "pointer", fontWeight: 600,
-                          }}
-                        >확인</button>
-                    }
-                  </div>
-                </div>
-              );
-            })}
           </div>
 
           {/* ── 보고 현황 버튼 ── */}
@@ -3310,11 +3222,9 @@ export default function App() {
   if (screen === SCREENS.SITUATION_DETAIL && selectedAccident) {
     const acc = selectedAccident;
     const DIRECTIVE_META = [
-      { key: "작업중지", icon: "🚫", label: "작업중지 지시",         color: "#C53030" },
-      { key: "신고119",  icon: "🚑", label: "119 신고",              color: "#2B6CB0" },
-      { key: "현장통제", icon: "🚧", label: "현장 통제 (출입 통제)", color: "#B7791F" },
-      { key: "응급조치", icon: "🏥", label: "응급조치 / 병원 이송",  color: "#6B46C1" },
-      { key: "현장보존", icon: "🔒", label: "현장 보존 조치",        color: "#276749" },
+      { key: "재지시대피", icon: "🚫", label: "작업중지 재지시 + 대피 요청", color: "#C53030" },
+      { key: "현장보존",   icon: "🔒", label: "현장 보존",                   color: "#276749" },
+      { key: "병원이송",   icon: "🏥", label: "병원 이송",                   color: "#6B46C1" },
     ];
     const directiveDone = Object.values(acc.directives).filter(Boolean).length;
 
