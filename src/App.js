@@ -59,50 +59,34 @@ const smsMessages = [
     step: "1차 보고",
     from: "현장 → 팀장",
     time: "14:36",
-    content: "[중대재해 1차 보고]\n- 일시: 06/25 14:35\n- 장소: 서산 대산공장\n- 유형: 추락\n- 현장 작업자: 김철수\n\n즉시 확인 바랍니다.\n(안전관리시스템)",
+    content: "[중대재해 1차 보고]\n- 일시: 06/25 14:35\n- 장소: 서산 대산공장\n- 유형: 추락\n- 현장 작업자: 김철수\n\n즉시 확인 바랍니다.\n",
     color: "#E53E3E",
   },
   {
     step: "2차 보고",
     from: "팀장 → 차장",
     time: "14:37",
-    content: "[중대재해 2차 보고]\n- 일시: 06/25 14:35\n- 장소: 서산 대산공장\n- 유형: 추락\n- 팀장 확인 완료\n\n지시 및 조치 바랍니다.\n(안전관리시스템)",
+    content: "[중대재해 2차 보고]\n- 일시: 06/25 14:35\n- 장소: 서산 대산공장\n- 유형: 추락\n- 팀장 확인 완료\n\n지시 및 조치 바랍니다.\n",
     color: "#DD6B20",
   },
   {
     step: "3차 보고",
     from: "차장 → 부장",
     time: "14:39",
-    content: "[중대재해 3차 보고]\n- 일시: 06/25 14:35\n- 장소: 서산 대산공장\n- 유형: 추락\n- 현재 조치율: 60%\n\n확인 후 지시 바랍니다.\n(안전관리시스템)",
+    content: "[중대재해 3차 보고]\n- 일시: 06/25 14:35\n- 장소: 서산 대산공장\n- 유형: 추락\n- 현재 조치율: 60%\n\n확인 후 지시 바랍니다.\n",
     color: "#2B6CB0",
   },
   {
     step: "상황실 알림",
     from: "→ 상황실",
     time: "14:40",
-    content: "[중대재해 상황 알림]\n- 사고 ID: 2024-0625-001\n- 유형: 추락\n- 장소: 서시 대산공장\n- 현재 단계: 2차 보고\n\n상황실에서 확인 바랍니다.\n(안전관리시스템)",
+    content: "[중대재해 상황 알림]\n- 사고 ID: 2024-0625-001\n- 유형: 추락\n- 장소: 서시 대산공장\n- 현재 단계: 2차 보고\n\n상황실에서 확인 바랍니다.\n",
     color: "#553C9A",
   },
 ];
 
-// ── 보고 완료 화면 컴포넌트 (카운트다운) ─────────────
+// ── 보고 완료 화면 컴포넌트 ─────────────────────────
 function CompleteScreen({ go }) {
-  const [countdown, setCountdown] = useState(5);
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setCountdown(prev => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          go(SCREENS.ACTIONS);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
-
   return (
     <div style={{
       width: "100%", maxWidth: 375, minHeight: "100vh",
@@ -124,28 +108,38 @@ function CompleteScreen({ go }) {
         <div style={{ fontSize: 14, color: "#666", textAlign: "center", lineHeight: 1.6, marginBottom: 32 }}>
           보고 내용이 등록되었으며,<br />지정된 대상자에게 전송되었습니다.
         </div>
-
-        {/* 카운트다운 */}
         <div style={{
-          width: 80, height: 80, borderRadius: "50%",
-          border: "4px solid #E53E3E", background: "#FFF5F5",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          marginBottom: 14,
+          width: "100%", background: "#FFF5F5", border: "1px solid #FED7D7",
+          borderRadius: 12, padding: "16px", marginBottom: 24,
+          display: "flex", gap: 10, alignItems: "flex-start",
         }}>
-          <div style={{ fontSize: 32, fontWeight: 800, color: "#E53E3E" }}>{countdown}</div>
+          <span style={{ fontSize: 18, flexShrink: 0 }}>⏳</span>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "#C53030", marginBottom: 4 }}>
+              상급자 조치 지시를 기다려주세요
+            </div>
+            <div style={{ fontSize: 12, color: "#744210", lineHeight: 1.6 }}>
+              상급자가 조치 지시를 하면 알림이 옵니다.<br />
+              알림을 확인하고 조치에 따라 대응해주세요.
+            </div>
+          </div>
         </div>
-        <div style={{ fontSize: 13, color: "#888", textAlign: "center", marginBottom: 32 }}>
-          {countdown}초 후 긴급조치 현황 입력으로 자동 이동합니다
-        </div>
-
         <button
-          onClick={() => go(SCREENS.ACTIONS)}
+          onClick={() => go(SCREENS.WORKER_TIMELINE)}
           style={{
-            padding: "13px 32px", background: "#E53E3E",
-            border: "none", borderRadius: 10, fontSize: 15,
-            fontWeight: 700, color: "#fff", cursor: "pointer",
+            width: "100%", padding: "14px", background: "#1A365D",
+            border: "none", borderRadius: 10, fontSize: 14,
+            fontWeight: 700, color: "#fff", cursor: "pointer", marginBottom: 10,
           }}
-        >지금 바로 이동하기 →</button>
+        >📊 보고 현황 보기</button>
+        <button
+          onClick={() => go(SCREENS.MAIN)}
+          style={{
+            width: "100%", padding: "13px", background: "#fff",
+            border: "1.5px solid #ddd", borderRadius: 10, fontSize: 14,
+            fontWeight: 600, color: "#666", cursor: "pointer",
+          }}
+        >홈으로 이동</button>
       </div>
     </div>
   );
@@ -487,17 +481,22 @@ export default function App() {
             fontSize: 14, fontWeight: 600, cursor: "pointer", color: "#555",
           }}>나중에</button>
           <button onClick={async () => {
-            // 확인 완료 처리
+            const now = new Date();
+            const hhmm = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
+            // DB 확인 완료 처리
             await supabase.from("directives")
               .update({ is_confirmed: true, confirmed_at: new Date().toISOString() })
               .eq("id", activeNotif.id);
+            // 타임라인에 확인 기록 추가
+            setNotifications(prev => prev.map(n =>
+              n.id === activeNotif.id ? { ...n, confirmedAt: hhmm } : n
+            ));
             setActiveNotif(null);
-            setNotifications(prev => prev.filter(n => n.id !== activeNotif.id));
           }} style={{
-            flex: 2, padding: "13px", background: "#276749",
+            flex: 2, padding: "13px", background: "#E53E3E",
             border: "none", borderRadius: 10,
             fontSize: 14, fontWeight: 700, cursor: "pointer", color: "#fff",
-          }}>✓ 조치 완료 확인</button>
+          }}>✓ 확인했습니다</button>
         </div>
       </div>
     </div>
@@ -2065,7 +2064,20 @@ export default function App() {
         pending: true,
       }));
 
-    const allEvents = [...fixedEvents, ...workerActionEvents, ...sentDirectives, ...pendingDirectives];
+    // 작업자가 확인한 지시 알림을 타임라인 이벤트로 변환
+    const confirmedNotifs = notifications
+      .filter(n => n.confirmedAt)
+      .sort((a, b) => (a.confirmedAt || "").localeCompare(b.confirmedAt || ""))
+      .map(n => ({
+        time: n.confirmedAt,
+        icon: "✓", color: "#276749",
+        title: `${n.actionLabel} — 확인 완료`,
+        desc: "현장 작업자 확인",
+        sub: "",
+        pending: false,
+      }));
+
+    const allEvents = [...fixedEvents, ...workerActionEvents, ...confirmedNotifs, ...sentDirectives, ...pendingDirectives];
 
     return (
       <div style={styles.phone}><NotifBanner /><NotifPopup /><HospitalInputPopup />
@@ -2576,17 +2588,17 @@ export default function App() {
       {
         key: "재지시대피",
         label: "작업중지 재지시 + 대피 요청",
-        defaultMsg: `[작업중지 재지시 및 대피 요청]\n\n2024.06.25 14:35 발생한 추락 사고와 관련하여\n작업중지를 재지시하고 2차 사고 예방을 위해\n모든 작업자의 즉각적인 대피를 요청합니다.\n\n- 현장 내 모든 작업 즉시 중단\n- 전 작업자 안전지대로 대피\n- 사고 구역 접근 전면 금지\n- 추가 지시 있을 때까지 대기\n\n(안전관리시스템)`,
+        defaultMsg: `[작업중지 재지시 및 대피 요청]\n\n2024.06.25 14:35 발생한 추락 사고와 관련하여\n작업중지를 재지시하고 2차 사고 예방을 위해\n모든 작업자의 즉각적인 대피를 요청합니다.\n\n- 현장 내 모든 작업 즉시 중단\n- 전 작업자 안전지대로 대피\n- 사고 구역 접근 전면 금지\n- 추가 지시 있을 때까지 대기\n\n`,
       },
       {
         key: "현장보존",
         label: "현장 보존",
-        defaultMsg: `[현장 보존 지시]\n\n사고 조사를 위한 현장 보존을\n철저히 유지하시기 바랍니다.\n\n- 사고 현장 원형 그대로 보존\n- 장비·자재 이동 금지\n- 사진 및 영상 추가 기록 요망\n- 목격자 확보 및 대기\n\n(안전관리시스템)`,
+        defaultMsg: `[현장 보존 지시]\n\n사고 조사를 위한 현장 보존을\n철저히 유지하시기 바랍니다.\n\n- 사고 현장 원형 그대로 보존\n- 장비·자재 이동 금지\n- 사진 및 영상 추가 기록 요망\n- 목격자 확보 및 대기\n\n`,
       },
       {
         key: "병원이송",
         label: "병원 이송",
-        defaultMsg: `[병원 이송 지시]\n\n부상자에 대한 즉각적인 응급조치 및\n병원 이송을 지시합니다.\n\n- 현장 응급 처치 즉시 시행\n- 인근 응급실로 신속 이송\n- 이송 병원 및 상태 보고 요망\n\n(안전관리시스템)`,
+        defaultMsg: `[병원 이송 지시]\n\n부상자에 대한 즉각적인 응급조치 및\n병원 이송을 지시합니다.\n\n- 현장 응급 처치 즉시 시행\n- 인근 응급실로 신속 이송\n- 이송 병원 및 상태 보고 요망\n\n`,
       },
     ];
 
@@ -2637,7 +2649,7 @@ export default function App() {
       <div style={styles.phone}><NotifBanner /><NotifPopup /><HospitalInputPopup />
         <div style={styles.statusBar}><span>9:41</span><span>📶 🔋</span></div>
         <div style={styles.header}>
-          <button style={styles.backBtn} onClick={() => go(SCREENS.COMPLETE)}>‹</button>
+          <button style={styles.backBtn} onClick={() => go(SCREENS.SUPERVISOR_DASHBOARD)}>‹</button>
           <span style={styles.headerTitle}>사고 상세 정보</span>
           <span />
         </div>
@@ -2794,23 +2806,6 @@ export default function App() {
               );
             })}
 
-            {/* 전체 완료 버튼 */}
-            <button
-              onClick={() => {
-                const all = {};
-                CHECKLIST_ITEMS.forEach(({ key }) => { all[key] = true; });
-                setChecklistDone(all);
-                setActiveDirective(null);
-              }}
-              style={{
-                ...styles.redBtn, marginTop: 10, padding: "11px", fontSize: 14,
-                background: allDone ? "#2F855A" : "#E53E3E",
-              }}
-            >
-              {allDone ? "✓ 모든 지시 완료" : "전체 완료 처리"}
-            </button>
-          </div>
-
           {/* ── 보고 현황 버튼 ── */}
           <button
             onClick={() => go(SCREENS.TIMELINE)}
@@ -2832,11 +2827,9 @@ export default function App() {
   if (screen === SCREENS.TIMELINE) {
 
     const CHECKLIST_META = [
-      { key: "작업중지", label: "작업중지 지시",          icon: "🚫", color: "#C53030" },
-      { key: "현장통제", label: "현장 통제 (출입 통제)",  icon: "🚧", color: "#B7791F" },
-      { key: "신고119",  label: "119 신고",               icon: "🚑", color: "#2B6CB0" },
-      { key: "응급조치", label: "응급조치 / 병원 이송",   icon: "🏥", color: "#6B46C1" },
-      { key: "현장보존", label: "현장 보존 조치",          icon: "🔒", color: "#276749" },
+      { key: "재지시대피", label: "작업중지 재지시 + 대피 요청", icon: "🚫", color: "#C53030" },
+      { key: "현장보존",   label: "현장 보존",                   icon: "🔒", color: "#276749" },
+      { key: "병원이송",   label: "병원 이송",                   icon: "🏥", color: "#6B46C1" },
     ];
 
     // 고정 이벤트 (사고 발생 + 보고 접수)
