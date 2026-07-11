@@ -85,72 +85,6 @@ const smsMessages = [
   },
 ];
 
-// ── 보고 완료 화면 컴포넌트 (카운트다운) ─────────────
-function CompleteScreen({ go }) {
-  const [countdown, setCountdown] = useState(5);
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setCountdown(prev => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          go(SCREENS.ACTIONS);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
-
-  return (
-    <div style={{
-      width: "100%", maxWidth: 375, minHeight: "100vh",
-      background: "#fff", display: "flex", flexDirection: "column",
-      fontFamily: "'Apple SD Gothic Neo', sans-serif",
-    }}>
-      <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 16px 4px", fontSize: 12, fontWeight: 700 }}>
-        <span>9:41</span><span>📶 🔋</span>
-      </div>
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "32px 24px" }}>
-        <div style={{
-          width: 80, height: 80, borderRadius: "50%", background: "#E53E3E",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: 36, color: "#fff", marginBottom: 20,
-        }}>✓</div>
-        <div style={{ fontSize: 22, fontWeight: 800, color: "#111", marginBottom: 8, textAlign: "center" }}>
-          1차 보고가 완료되었습니다.
-        </div>
-        <div style={{ fontSize: 14, color: "#666", textAlign: "center", lineHeight: 1.6, marginBottom: 32 }}>
-          보고 내용이 등록되었으며,<br />지정된 대상자에게 전송되었습니다.
-        </div>
-
-        {/* 카운트다운 */}
-        <div style={{
-          width: 80, height: 80, borderRadius: "50%",
-          border: "4px solid #E53E3E", background: "#FFF5F5",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          marginBottom: 14,
-        }}>
-          <div style={{ fontSize: 32, fontWeight: 800, color: "#E53E3E" }}>{countdown}</div>
-        </div>
-        <div style={{ fontSize: 13, color: "#888", textAlign: "center", marginBottom: 32 }}>
-          {countdown}초 후 긴급조치 현황 입력으로 자동 이동합니다
-        </div>
-
-        <button
-          onClick={() => go(SCREENS.ACTIONS)}
-          style={{
-            padding: "13px 32px", background: "#E53E3E",
-            border: "none", borderRadius: 10, fontSize: 15,
-            fontWeight: 700, color: "#fff", cursor: "pointer",
-          }}
-        >지금 바로 이동하기 →</button>
-      </div>
-    </div>
-  );
-}
-
 export default function App() {
   const [screen, setScreen] = useState(SCREENS.LOGIN);
   const [userRole, setUserRole] = useState(null);
@@ -183,18 +117,14 @@ export default function App() {
   const [photoError, setPhotoError] = useState(false);
   const [checkedRecipients, setCheckedRecipients] = useState([]);
   const [actionStatus, setActionStatus] = useState({
-    stop: "partial",   // 작업 중지 항목 하나 체크됨
+    stop: "idle",      // idle | done | partial
     control: "idle",
     report119: "idle",
   });
   const [actionTimes, setActionTimes] = useState({}); // 조치 항목별 마지막 상태변경 시각
   // 세부 체크리스트 항목별 체크여부/체크시각 (key: "stop-0" 형태)
-  const [subItemChecked, setSubItemChecked] = useState({ "stop-0": true });
-  const [subItemTimes, setSubItemTimes] = useState(() => {
-    const now = new Date();
-    const hhmm = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
-    return { "stop-0": hhmm };
-  });
+  const [subItemChecked, setSubItemChecked] = useState({});
+  const [subItemTimes, setSubItemTimes] = useState({});
   // 상급자 체크리스트 state
   const [checklistDone, setChecklistDone] = useState({
     작업중지: true, 신고119: true, 현장통제: false, 응급조치: false, 현장보존: false,
@@ -243,7 +173,6 @@ export default function App() {
 
   const [showMockAlert, setShowMockAlert] = useState(false);
   const [isMock, setIsMock] = useState(false);
-  const [mockCheck, setMockCheck] = useState({ stop: false, call119: false });
   const [showHospitalInput, setShowHospitalInput] = useState(false);
   const [hospitalName, setHospitalName] = useState("");
   const [hospitalSubmitted, setHospitalSubmitted] = useState(false);
@@ -990,68 +919,39 @@ export default function App() {
 
                 {/* 지시사항 */}
                 <div style={{ padding: "20px 20px 8px" }}>
-
-                  {/* 작업 중지 체크 */}
-                  <button
-                    onClick={() => setMockCheck(prev => ({ ...prev, stop: !prev.stop }))}
-                    style={{
-                      width: "100%", background: mockCheck.stop ? "#FFF5F5" : "#fff",
-                      border: `2px solid ${mockCheck.stop ? "#E53E3E" : "#E2E8F0"}`,
-                      borderRadius: 12, padding: "14px", marginBottom: 10,
-                      cursor: "pointer", textAlign: "left",
-                      display: "flex", gap: 12, alignItems: "flex-start",
-                    }}
-                  >
-                    <div style={{
-                      width: 24, height: 24, borderRadius: 6, flexShrink: 0,
-                      background: mockCheck.stop ? "#E53E3E" : "#fff",
-                      border: `2px solid ${mockCheck.stop ? "#E53E3E" : "#CBD5E0"}`,
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      marginTop: 2,
-                    }}>
-                      {mockCheck.stop && <span style={{ color: "#fff", fontSize: 14, fontWeight: 800 }}>✓</span>}
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 15, fontWeight: 800, color: "#C53030", marginBottom: 4, display: "flex", alignItems: "center", gap: 8 }}>
-                        <span>🚫</span> 즉시 작업 중지
+                  <div style={{
+                    background: "#FFF5F5", border: "2px solid #E53E3E",
+                    borderRadius: 12, padding: "16px", marginBottom: 12,
+                    display: "flex", gap: 12, alignItems: "flex-start",
+                  }}>
+                    <span style={{ fontSize: 24, flexShrink: 0 }}>🚫</span>
+                    <div>
+                      <div style={{ fontSize: 15, fontWeight: 800, color: "#C53030", marginBottom: 4 }}>
+                        즉시 작업 중지
                       </div>
                       <div style={{ fontSize: 13, color: "#555", lineHeight: 1.6 }}>
                         현장 내 모든 작업을 즉시 중단하고<br />
                         작업자를 안전한 곳으로 대피시키세요.
                       </div>
                     </div>
-                  </button>
+                  </div>
 
-                  {/* 119 신고 체크 */}
-                  <button
-                    onClick={() => setMockCheck(prev => ({ ...prev, call119: !prev.call119 }))}
-                    style={{
-                      width: "100%", background: mockCheck.call119 ? "#EBF8FF" : "#fff",
-                      border: `2px solid ${mockCheck.call119 ? "#2B6CB0" : "#E2E8F0"}`,
-                      borderRadius: 12, padding: "14px", marginBottom: 16,
-                      cursor: "pointer", textAlign: "left",
-                      display: "flex", gap: 12, alignItems: "flex-start",
-                    }}
-                  >
-                    <div style={{
-                      width: 24, height: 24, borderRadius: 6, flexShrink: 0,
-                      background: mockCheck.call119 ? "#2B6CB0" : "#fff",
-                      border: `2px solid ${mockCheck.call119 ? "#2B6CB0" : "#CBD5E0"}`,
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      marginTop: 2,
-                    }}>
-                      {mockCheck.call119 && <span style={{ color: "#fff", fontSize: 14, fontWeight: 800 }}>✓</span>}
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 15, fontWeight: 800, color: "#2B6CB0", marginBottom: 4, display: "flex", alignItems: "center", gap: 8 }}>
-                        <span>🚑</span> 119 즉시 신고
+                  <div style={{
+                    background: "#EBF8FF", border: "2px solid #2B6CB0",
+                    borderRadius: 12, padding: "16px", marginBottom: 20,
+                    display: "flex", gap: 12, alignItems: "flex-start",
+                  }}>
+                    <span style={{ fontSize: 24, flexShrink: 0 }}>🚑</span>
+                    <div>
+                      <div style={{ fontSize: 15, fontWeight: 800, color: "#2B6CB0", marginBottom: 4 }}>
+                        119 즉시 신고
                       </div>
                       <div style={{ fontSize: 13, color: "#555", lineHeight: 1.6 }}>
                         119에 신고하고 부상자 여부를<br />
                         확인 후 응급처치를 시행하세요.
                       </div>
                     </div>
-                  </button>
+                  </div>
 
                   <div style={{
                     background: "#FFFBEB", border: "1px solid #F6E05E",
@@ -1065,23 +965,20 @@ export default function App() {
 
                   <button
                     onClick={() => {
-                      if (!mockCheck.stop || !mockCheck.call119) return;
                       setShowMockAlert(false);
                       go(SCREENS.ACCIDENT_TYPE);
                     }}
                     style={{
-                      width: "100%", padding: "16px", background: (mockCheck.stop && mockCheck.call119) ? "#E53E3E" : "#CBD5E0",
+                      width: "100%", padding: "16px", background: "#E53E3E",
                       border: "none", borderRadius: 12, fontSize: 16,
-                      fontWeight: 800, color: "#fff", cursor: (mockCheck.stop && mockCheck.call119) ? "pointer" : "not-allowed",
+                      fontWeight: 800, color: "#fff", cursor: "pointer",
                       marginBottom: 12,
-                      boxShadow: (mockCheck.stop && mockCheck.call119) ? "0 4px 12px rgba(229,62,62,0.35)" : "none",
+                      boxShadow: "0 4px 12px rgba(229,62,62,0.35)",
                     }}
-                  >
-                    {(mockCheck.stop && mockCheck.call119) ? "확인 — 훈련 시작하기 →" : "위 항목을 모두 확인해주세요"}
-                  </button>
+                  >확인 — 훈련 시작하기 →</button>
 
                   <button
-                    onClick={() => { setIsMock(false); setShowMockAlert(false); setMockCheck({ stop: false, call119: false }); }}
+                    onClick={() => { setIsMock(false); setShowMockAlert(false); }}
                     style={{
                       width: "100%", padding: "12px", background: "none",
                       border: "none", fontSize: 13, color: "#aaa",
@@ -1993,7 +1890,67 @@ export default function App() {
 
   // ── 화면 07: 보고 완료 ──────────────────────────────
   if (screen === SCREENS.COMPLETE) {
-    return <CompleteScreen go={go} />;
+    return (
+      <div style={styles.phone}><NotifBanner /><NotifPopup /><HospitalInputPopup />
+        <div style={styles.statusBar}><span>9:41</span><span>📶 🔋</span></div>
+        <div style={{ flex: 1, overflowY: "auto", padding: "32px 24px 20px", display: "flex", flexDirection: "column", alignItems: "center" }}>
+          {/* 완료 아이콘 */}
+          <div style={{
+            width: 80, height: 80, borderRadius: "50%", background: "#E53E3E",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 36, color: "#fff", marginBottom: 20,
+          }}>✓</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: "#111", marginBottom: 8, textAlign: "center" }}>
+            1차 보고가 완료되었습니다.
+          </div>
+          <div style={{ fontSize: 14, color: "#666", textAlign: "center", lineHeight: 1.6, marginBottom: 28 }}>
+            보고 내용이 등록되었으며,<br />지정된 대상자에게 전송되었습니다.
+          </div>
+
+          {/* 다음 단계 안내 카드 */}
+          <div style={{
+            width: "100%", background: "#FFF5F5", border: "1px solid #FED7D7",
+            borderRadius: 12, padding: "16px",
+            display: "flex", gap: 10, alignItems: "flex-start",
+          }}>
+            <span style={{ fontSize: 18, flexShrink: 0 }}>⏳</span>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "#C53030", marginBottom: 4 }}>
+                다음 단계: 긴급 조치 현황 입력
+              </div>
+              <div style={{ fontSize: 12, color: "#744210", lineHeight: 1.6 }}>
+                작업 중지, 현장 통제, 119 신고 등 현재까지 진행된 조치를 입력해주세요. 조치/미조치를 확인할 때마다 시각이 자동으로 기록됩니다.
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style={{ padding: "0 24px 40px", display: "flex", flexDirection: "column", gap: 12 }}>
+          <button
+            style={{
+              width: "100%", padding: "15px", background: "#E53E3E",
+              border: "none", borderRadius: 12, fontSize: 16,
+              fontWeight: 700, cursor: "pointer", color: "#fff",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+            }}
+            onClick={() => go(SCREENS.ACTIONS)}
+          >🚨 긴급 조치 현황 입력하기</button>
+          <button
+            style={{
+              width: "100%", padding: "15px", background: "#1A365D",
+              border: "none", borderRadius: 12, fontSize: 15,
+              fontWeight: 700, cursor: "pointer", color: "#fff",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+            }}
+            onClick={() => go(SCREENS.WORKER_TIMELINE)}
+          >📊 보고 현황 바로 보기</button>
+          <button style={{
+            width: "100%", padding: "13px", background: "#fff",
+            border: "1.5px solid #ddd", borderRadius: 12, fontSize: 14,
+            fontWeight: 600, cursor: "pointer", color: "#666",
+          }} onClick={goHome}>홈으로 이동</button>
+        </div>
+      </div>
+    );
   }
 
   // ── 화면 07-B: 현장작업자 보고현황 (타임라인 + 상급자 조치 지시) ─
