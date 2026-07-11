@@ -178,6 +178,11 @@ export default function App() {
   const [hospitalSubmitted, setHospitalSubmitted] = useState(false);
 
   const go = (s) => setScreen(s);
+  const goHome = () => {
+    if (userRole === "supervisor") go(SCREENS.SUPERVISOR_DASHBOARD);
+    else if (userRole === "situation") go(SCREENS.SITUATION_ROOM);
+    else go(SCREENS.MAIN);
+  };
 
   // ── Supabase Realtime — 상급자 지시 수신 ──────────────
   useEffect(() => {
@@ -1012,7 +1017,7 @@ export default function App() {
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.MAIN)}>‹</button>
           <span style={styles.headerTitle}>사고 유형 선택</span>
-          <button style={styles.cancelBtn} onClick={() => go(SCREENS.MAIN)}>취소</button>
+          <button style={styles.cancelBtn} onClick={goHome}>취소</button>
         </div>
         <div style={{ ...styles.body }}>
           <p style={{ fontSize: 14, color: "#666", marginBottom: 20 }}>해당되는 사고 유형을 선택하세요.</p>
@@ -1125,7 +1130,7 @@ export default function App() {
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.ACCIDENT_TYPE)}>‹</button>
           <span style={styles.headerTitle}>사고 위치 확인</span>
-          <button style={styles.cancelBtn} onClick={() => go(SCREENS.MAIN)}>취소</button>
+          <button style={styles.cancelBtn} onClick={goHome}>취소</button>
         </div>
         <div style={styles.body}>
           <p style={{ fontSize: 14, color: "#666", marginBottom: 16 }}>GPS가 자동으로 위치를 확인합니다.</p>
@@ -1264,7 +1269,7 @@ export default function App() {
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.LOCATION)}>‹</button>
           <span style={styles.headerTitle}>사고 내용 입력</span>
-          <button style={styles.cancelBtn} onClick={() => go(SCREENS.MAIN)}>취소</button>
+          <button style={styles.cancelBtn} onClick={goHome}>취소</button>
         </div>
         <div style={styles.body}>
           {/* 발생 일시 */}
@@ -1417,7 +1422,7 @@ export default function App() {
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.DETAILS)}>‹</button>
           <span style={styles.headerTitle}>사진/동영상 등록</span>
-          <button style={styles.cancelBtn} onClick={() => go(SCREENS.MAIN)}>취소</button>
+          <button style={styles.cancelBtn} onClick={goHome}>취소</button>
         </div>
         <div style={styles.body}>
           <p style={{ fontSize: 14, color: "#666", marginBottom: 10 }}>
@@ -1595,7 +1600,7 @@ export default function App() {
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.WORKER_TIMELINE)}>‹</button>
           <span style={styles.headerTitle}>긴급 조치 현황 입력</span>
-          <button style={styles.cancelBtn} onClick={() => go(SCREENS.MAIN)}>취소</button>
+          <button style={styles.cancelBtn} onClick={goHome}>취소</button>
         </div>
         <div style={styles.body}>
           <p style={{ fontSize: 14, color: "#666", marginBottom: 6 }}>
@@ -1761,7 +1766,7 @@ export default function App() {
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.PHOTOS)}>‹</button>
           <span style={styles.headerTitle}>보고 대상 확인</span>
-          <button style={styles.cancelBtn} onClick={() => go(SCREENS.MAIN)}>취소</button>
+          <button style={styles.cancelBtn} onClick={goHome}>취소</button>
         </div>
         <div style={styles.body}>
           {/* 업무유형 배지 + 전체선택 */}
@@ -1942,7 +1947,7 @@ export default function App() {
             width: "100%", padding: "13px", background: "#fff",
             border: "1.5px solid #ddd", borderRadius: 12, fontSize: 14,
             fontWeight: 600, cursor: "pointer", color: "#666",
-          }} onClick={() => go(SCREENS.MAIN)}>홈으로 이동</button>
+          }} onClick={goHome}>홈으로 이동</button>
         </div>
       </div>
     );
@@ -2035,7 +2040,7 @@ export default function App() {
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.COMPLETE)}>‹</button>
           <span style={styles.headerTitle}>보고 현황</span>
-          <button style={styles.cancelBtn} onClick={() => go(SCREENS.MAIN)}>홈</button>
+          <button style={styles.cancelBtn} onClick={goHome}>홈</button>
         </div>
         <div style={styles.body}>
 
@@ -3540,7 +3545,7 @@ export default function App() {
           </div>
         </div>
         <div style={{ padding: "12px 16px 24px" }}>
-          <button style={styles.redBtn} onClick={() => go(SCREENS.MAIN)}>홈으로 이동</button>
+          <button style={styles.redBtn} onClick={goHome}>홈으로 이동</button>
         </div>
       </div>
     );
