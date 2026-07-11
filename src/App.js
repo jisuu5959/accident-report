@@ -95,7 +95,7 @@ function CompleteScreen({ go }) {
       fontFamily: "'Apple SD Gothic Neo', sans-serif",
     }}>
       <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 16px 4px", fontSize: 12, fontWeight: 700 }}>
-        <span>9:41</span><span>📶 🔋</span>
+        <span>9:41</span><span>📶 </span>
       </div>
       <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "32px 24px" }}>
         <div style={{
@@ -132,7 +132,7 @@ function CompleteScreen({ go }) {
             border: "none", borderRadius: 10, fontSize: 14,
             fontWeight: 700, color: "#fff", cursor: "pointer", marginBottom: 10,
           }}
-        >📊 보고 현황 보기</button>
+        > 보고 현황 보기</button>
         <button
           onClick={() => go(SCREENS.MAIN)}
           style={{
@@ -661,7 +661,7 @@ export default function App() {
 
     return (
       <div style={styles.phone}><NotifBanner /><NotifPopup /><HospitalInputPopup />
-        <div style={styles.statusBar}><span>9:41</span><span>📶 🔋</span></div>
+        <div style={styles.statusBar}><span>9:41</span><span>📶 </span></div>
 
         <div style={{
           flex: 1, display: "flex", flexDirection: "column",
@@ -887,7 +887,7 @@ export default function App() {
       <div style={styles.phone}><NotifBanner /><NotifPopup /><HospitalInputPopup />
         <div style={styles.statusBar}>
           <span>9:41</span>
-          <span>📶 🔋</span>
+          <span>📶 </span>
         </div>
         <div style={{ textAlign: "center", padding: "20px 20px 0", position: "relative" }}>
           <div style={{ position: "absolute", right: 20, top: 20, fontSize: 22 }}>🔔</div>
@@ -1095,7 +1095,7 @@ export default function App() {
   if (screen === SCREENS.ACCIDENT_TYPE) {
     return (
       <div style={styles.phone}><NotifBanner /><NotifPopup /><HospitalInputPopup />
-        <div style={styles.statusBar}><span>9:41</span><span>📶 🔋</span></div>
+        <div style={styles.statusBar}><span>9:41</span><span>📶 </span></div>
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.MAIN)}>‹</button>
           <span style={styles.headerTitle}>사고 유형 선택</span>
@@ -1221,7 +1221,7 @@ export default function App() {
 
     return (
       <div style={styles.phone}><NotifBanner /><NotifPopup /><HospitalInputPopup />
-        <div style={styles.statusBar}><span>9:41</span><span>📶 🔋</span></div>
+        <div style={styles.statusBar}><span>9:41</span><span>📶 </span></div>
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.ACCIDENT_TYPE)}>‹</button>
           <span style={styles.headerTitle}>사고 위치 확인</span>
@@ -1360,7 +1360,7 @@ export default function App() {
   if (screen === SCREENS.DETAILS) {
     return (
       <div style={styles.phone}><NotifBanner /><NotifPopup /><HospitalInputPopup />
-        <div style={styles.statusBar}><span>9:41</span><span>📶 🔋</span></div>
+        <div style={styles.statusBar}><span>9:41</span><span>📶 </span></div>
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.LOCATION)}>‹</button>
           <span style={styles.headerTitle}>사고 내용 입력</span>
@@ -1513,7 +1513,7 @@ export default function App() {
 
     return (
       <div style={styles.phone}><NotifBanner /><NotifPopup /><HospitalInputPopup />
-        <div style={styles.statusBar}><span>9:41</span><span>📶 🔋</span></div>
+        <div style={styles.statusBar}><span>9:41</span><span>📶 </span></div>
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.DETAILS)}>‹</button>
           <span style={styles.headerTitle}>사진/동영상 등록</span>
@@ -1691,7 +1691,7 @@ export default function App() {
 
     return (
       <div style={styles.phone}><NotifBanner /><NotifPopup /><HospitalInputPopup />
-        <div style={styles.statusBar}><span>9:41</span><span>📶 🔋</span></div>
+        <div style={styles.statusBar}><span>9:41</span><span>📶 </span></div>
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.WORKER_TIMELINE)}>‹</button>
           <span style={styles.headerTitle}>긴급 조치 현황 입력</span>
@@ -1857,7 +1857,7 @@ export default function App() {
 
     return (
       <div style={styles.phone}><NotifBanner /><NotifPopup /><HospitalInputPopup />
-        <div style={styles.statusBar}><span>9:41</span><span>📶 🔋</span></div>
+        <div style={styles.statusBar}><span>9:41</span><span>📶 </span></div>
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.PHOTOS)}>‹</button>
           <span style={styles.headerTitle}>보고 대상 확인</span>
@@ -2082,7 +2082,7 @@ export default function App() {
 
     return (
       <div style={styles.phone}><NotifBanner /><NotifPopup /><HospitalInputPopup />
-        <div style={styles.statusBar}><span>9:41</span><span>📶 🔋</span></div>
+        <div style={styles.statusBar}><span>9:41</span><span>📶 </span></div>
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.COMPLETE)}>‹</button>
           <span style={styles.headerTitle}>보고 현황</span>
@@ -2257,7 +2257,7 @@ export default function App() {
     return (
       <div style={{ ...styles.phone, background: "#F7F8FC" }}>
         <div style={{ ...styles.statusBar, background: "#1A365D", color: "#fff" }}>
-          <span>9:41</span><span>📶 🔋</span>
+          <span>9:41</span><span>📶 </span>
         </div>
 
         {/* 헤더 */}
@@ -2440,7 +2440,7 @@ export default function App() {
 
     return (
       <div style={styles.phone}><NotifBanner /><NotifPopup /><HospitalInputPopup />
-        <div style={styles.statusBar}><span>9:41</span><span>📶 🔋</span></div>
+        <div style={styles.statusBar}><span>9:41</span><span>📶 </span></div>
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.MAIN)}>‹</button>
           <span style={styles.headerTitle}>비상 연락망</span>
@@ -2648,7 +2648,7 @@ export default function App() {
 
     return (
       <div style={styles.phone}><NotifBanner /><NotifPopup /><HospitalInputPopup />
-        <div style={styles.statusBar}><span>9:41</span><span>📶 🔋</span></div>
+        <div style={styles.statusBar}><span>9:41</span><span>📶 </span></div>
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.SUPERVISOR_DASHBOARD)}>‹</button>
           <span style={styles.headerTitle}>사고 상세 정보</span>
@@ -2817,204 +2817,26 @@ export default function App() {
               display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
             }}
           >
-            📊 보고 현황 전체 보기
+             보고 현황 전체 보기
           </button>
         </div>
       </div>
+    </div>
     );
   }
 
   // ── 화면 08-B: 보고 현황 타임라인 ────────────────────
   if (screen === SCREENS.TIMELINE) {
-
-    const CHECKLIST_META = [
-      { key: "재지시대피", label: "작업중지 재지시 + 대피 요청", icon: "🚫", color: "#C53030" },
-      { key: "현장보존", label: "현장 보존", icon: "🔒", color: "#276749" },
-      { key: "병원이송", label: "병원 이송", icon: "🏥", color: "#6B46C1" },
-    ];
-
-    // 고정 이벤트 (사고 발생 + 보고 접수)
-    const fixedEvents = [
-      {
-        time: "14:35", icon: "🚨", color: "#E53E3E",
-        title: "사고 발생",
-        desc: "옥외 배관 점검 중 난간 파손으로 추락",
-        sub: "충청남도 서산시 대산읍 · 부상자 있음",
-        pending: false,
-      },
-      {
-        time: "14:36", icon: "📋", color: "#E53E3E",
-        title: "1차 보고 접수",
-        desc: "김철수 작업자 → 김현당 팀장",
-        sub: "사고 내용 및 사진 첨부 포함",
-        pending: false,
-      },
-    ];
-
-    // 체크리스트 이벤트 — 전송된 것 + 미전송 항목
-    const checklistEvents = CHECKLIST_META.map((meta) => {
-      const sent = directiveSent[meta.key];
-      const time = directiveTimes[meta.key] || null;
-      return {
-        time,
-        icon: meta.icon,
-        color: sent ? meta.color : "#A0AEC0",
-        title: meta.label,
-        desc: sent ? "지시 문자 전송 완료 · 김현당 팀장" : "미전송",
-        sub: sent ? `수신자 확인 대기 중` : "아직 지시하기 전",
-        pending: !sent,
-      };
-    });
-
-    // 전송된 것 시간순 + 미전송 원래 순서 유지
-    const sentEvents = checklistEvents
-      .filter(e => !e.pending)
-      .sort((a, b) => (a.time || "").localeCompare(b.time || ""));
-    const pendingEvents = checklistEvents.filter(e => e.pending);
-    const allEvents = [...fixedEvents, ...sentEvents, ...pendingEvents];
-
-    const sentCount = checklistEvents.filter(e => !e.pending).length;
-    const totalCount = CHECKLIST_META.length;
-
     return (
       <div style={styles.phone}><NotifBanner /><NotifPopup /><HospitalInputPopup />
-        <div style={styles.statusBar}><span>9:41</span><span>📶 🔋</span></div>
+        <div style={styles.statusBar}><span>9:41</span><span>배터리</span></div>
         <div style={styles.header}>
-          <button style={styles.backBtn} onClick={() => go(SCREENS.SUPERVISOR)}>‹</button>
+          <button style={styles.backBtn} onClick={goHome}>홈</button>
           <span style={styles.headerTitle}>보고 현황</span>
           <span />
         </div>
         <div style={styles.body}>
-
-          {/* 사고 요약 카드 */}
-          <div style={{
-            background: "#FFF5F5", border: "1px solid #FED7D7",
-            borderRadius: 10, padding: "12px 14px", marginBottom: 16,
-          }}>
-            <div style={{ fontSize: 12, color: "#C53030", fontWeight: 700, marginBottom: 6 }}>📌 사고 기본 정보</div>
-            {[
-              ["일시", "2024.06.25 (화) 14:35"],
-              ["장소", "충청남도 서산시 대산읍"],
-              ["유형", "추락"],
-              ["부상자", "있음"],
-            ].map(([k, v]) => (
-              <div key={k} style={{ display: "flex", gap: 10, fontSize: 13, padding: "2px 0" }}>
-                <span style={{ color: "#888", minWidth: 36 }}>{k}</span>
-                <span style={{ color: "#111", fontWeight: 600 }}>{v}</span>
-              </div>
-            ))}
-          </div>
-
-          {/* 조치 진행률 */}
-          <div style={{
-            background: "#F7FAFC", border: "1px solid #E2E8F0",
-            borderRadius: 10, padding: "12px 14px", marginBottom: 20,
-          }}>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-              <span style={{ fontSize: 13, fontWeight: 700, color: "#111" }}>조치 지시 현황</span>
-              <span style={{ fontSize: 13, fontWeight: 700, color: sentCount === totalCount ? "#276749" : "#E53E3E" }}>
-                {sentCount}/{totalCount} 완료
-              </span>
-            </div>
-            <div style={{ height: 7, background: "#E2E8F0", borderRadius: 4, overflow: "hidden" }}>
-              <div style={{
-                height: "100%", borderRadius: 4, transition: "width 0.4s ease",
-                width: `${(sentCount / totalCount) * 100}%`,
-                background: sentCount === totalCount ? "#38A169" : "#E53E3E",
-              }} />
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
-              <span style={{ fontSize: 11, color: "#888" }}>전송 완료 {sentCount}건</span>
-              <span style={{ fontSize: 11, color: "#aaa" }}>미전송 {totalCount - sentCount}건</span>
-            </div>
-          </div>
-
-          {/* 타임라인 */}
-          <div style={{ fontSize: 14, fontWeight: 700, color: "#111", marginBottom: 14 }}>진행 타임라인</div>
-          <div style={{ position: "relative" }}>
-            {/* 세로 연결선 */}
-            <div style={{
-              position: "absolute", left: 15, top: 16, bottom: 16,
-              width: 2, background: "#E2E8F0", zIndex: 0,
-            }} />
-
-            {allEvents.map((ev, i) => (
-              <div key={i} style={{
-                display: "flex", gap: 12, marginBottom: 20,
-                position: "relative", zIndex: 1,
-              }}>
-                {/* 아이콘 원 */}
-                <div style={{
-                  width: 32, height: 32, borderRadius: "50%", flexShrink: 0,
-                  background: ev.pending ? "#F0F4F8" : ev.color,
-                  border: `2px solid ${ev.pending ? "#CBD5E0" : ev.color}`,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 14, zIndex: 2,
-                }}>{ev.icon}</div>
-
-                {/* 텍스트 */}
-                <div style={{
-                  flex: 1, paddingTop: 2,
-                  background: ev.pending ? "transparent" : "#fff",
-                  border: ev.pending ? "none" : `1px solid ${ev.color}22`,
-                  borderRadius: ev.pending ? 0 : 10,
-                  padding: ev.pending ? "2px 0" : "10px 12px",
-                  opacity: ev.pending ? 0.5 : 1,
-                }}>
-                  {/* 제목 + 시각 */}
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: ev.pending ? 2 : 4 }}>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: ev.pending ? "#A0AEC0" : "#111" }}>
-                      {ev.title}
-                    </span>
-                    {ev.time
-                      ? <span style={{
-                          fontSize: 12, fontWeight: 800, color: ev.color,
-                          background: `${ev.color}18`, borderRadius: 6,
-                          padding: "2px 7px", flexShrink: 0,
-                        }}>{ev.time}</span>
-                      : <span style={{ fontSize: 11, color: "#CBD5E0", flexShrink: 0 }}>미전송</span>
-                    }
-                  </div>
-                  <div style={{ fontSize: 12, color: ev.pending ? "#CBD5E0" : "#555" }}>{ev.desc}</div>
-                  {!ev.pending && ev.sub && (
-                    <div style={{ fontSize: 11, color: "#aaa", marginTop: 2 }}>{ev.sub}</div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* 미전송 항목 안내 */}
-          {pendingEvents.length > 0 && (
-            <div style={{
-              background: "#FFFBEB", border: "1px solid #F6E05E",
-              borderRadius: 10, padding: "12px 14px", marginTop: 4,
-              display: "flex", gap: 8, alignItems: "flex-start",
-            }}>
-              <span style={{ fontSize: 16, flexShrink: 0 }}>⚠️</span>
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: "#B7791F", marginBottom: 4 }}>
-                  미전송 조치 {pendingEvents.length}건
-                </div>
-                <div style={{ fontSize: 12, color: "#744210", lineHeight: 1.6 }}>
-                  {pendingEvents.map(e => e.title).join(", ")} 지시가 아직 전송되지 않았습니다. 조치 지시 체크리스트에서 확인해주세요.
-                </div>
-              </div>
-            </div>
-          )}
-
-          {pendingEvents.length === 0 && (
-            <div style={{
-              background: "#F0FFF4", border: "1px solid #9AE6B4",
-              borderRadius: 10, padding: "12px 14px", marginTop: 4,
-              display: "flex", gap: 8, alignItems: "center",
-            }}>
-              <span style={{ fontSize: 18 }}>✅</span>
-              <span style={{ fontSize: 13, fontWeight: 700, color: "#276749" }}>
-                모든 조치 지시가 완료되었습니다.
-              </span>
-            </div>
-          )}
+          <div style={{ textAlign: "center", color: "#888", fontSize: 13 }}>타임라인</div>
         </div>
       </div>
     );
@@ -3097,7 +2919,7 @@ export default function App() {
 
     return (
       <div style={{ ...styles.phone, background: "#F7F8FC" }}>
-        <div style={{ ...styles.statusBar, background: "#fff" }}><span>9:41</span><span>📶 🔋</span></div>
+        <div style={{ ...styles.statusBar, background: "#fff" }}><span>9:41</span><span>📶 </span></div>
 
         {/* 헤더 */}
         <div style={{
@@ -3224,7 +3046,7 @@ export default function App() {
 
     return (
       <div style={{ ...styles.phone, background: "#F7F8FC" }}>
-        <div style={{ ...styles.statusBar, background: "#fff" }}><span>9:41</span><span>📶 🔋</span></div>
+        <div style={{ ...styles.statusBar, background: "#fff" }}><span>9:41</span><span>📶 </span></div>
 
         {/* 헤더 */}
         <div style={{
@@ -3454,7 +3276,7 @@ export default function App() {
             <button style={{
               flex: 1, padding: "12px", background: "#fff", color: "#E53E3E",
               border: "1.5px solid #E53E3E", borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: "pointer",
-            }}>📊 보고서 출력</button>
+            }}> 보고서 출력</button>
           </div>
         </div>
       </div>
@@ -3465,7 +3287,7 @@ export default function App() {
   if (screen === SCREENS.SMS) {
     return (
       <div style={{ ...styles.phone, background: "#F7F8FC" }}>
-        <div style={{ ...styles.statusBar, background: "#fff" }}><span>9:41</span><span>📶 🔋</span></div>
+        <div style={{ ...styles.statusBar, background: "#fff" }}><span>9:41</span><span>📶 </span></div>
         <div style={{
           background: "#fff", padding: "16px 20px 12px",
           borderBottom: "1px solid #EFEFEF", textAlign: "center",
