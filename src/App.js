@@ -1128,10 +1128,10 @@ export default function App() {
             {acidentTypes.map((t) => (
               <button
                 key={t.id}
-                onClick={() => setSelectedType(t.id)}
+                onClick={() => setSelectedType(t.label)}
                 style={{
-                  background: selectedType === t.id ? "#FFF5F5" : "#FAFAFA",
-                  border: `2px solid ${selectedType === t.id ? "#E53E3E" : "#EFEFEF"}`,
+                  background: selectedType === t.label ? "#FFF5F5" : "#FAFAFA",
+                  border: `2px solid ${selectedType === t.label ? "#E53E3E" : "#EFEFEF"}`,
                   borderRadius: 12,
                   padding: "20px 12px",
                   cursor: "pointer",
