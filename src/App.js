@@ -152,6 +152,8 @@ export default function App() {
   const [selectedAccident, setSelectedAccident] = useState(null);
   const [situationFilter, setSituationFilter] = useState("전체");
   const [dispatchState, setDispatchState] = useState({});
+  const [accidentReports, setAccidentReports] = useState([]);  // DB에서 불러온 사고 목록
+  const [reportsLoading, setReportsLoading] = useState(false);
   const [emergencyTab, setEmergencyTab] = useState("유지보수");
   const [emergencySearch, setEmergencySearch] = useState("");
   const [emergencyUsers, setEmergencyUsers] = useState([]);
@@ -222,6 +224,8 @@ export default function App() {
         { event: "INSERT", schema: "public", table: "accident_reports" },
         (payload) => {
           const report = payload.new;
+          // 사고 목록 자동 갱신
+          setAccidentReports(prev => [report, ...prev]);
           const newNotif = {
             id: report.id,
             title: "🚨 새 사고 보고 접수",
@@ -2174,30 +2178,30 @@ export default function App() {
 
   // ── 화면 07-S: 상급자 대시보드 (첫 화면) ────────────
   if (screen === SCREENS.SUPERVISOR_DASHBOARD) {
-    // 더미 사고 데이터 (DB 연결 후 실제 데이터로 교체)
-    const ACCIDENTS = [
-      {
-        id: "2024-0625-001", type: "추락", icon: "🧗",
-        location: "충청남도 서산시 대산읍", worker: "김철수 작업자",
-        occurredAt: "2024.06.25 14:35", status: "진행중", reportStep: "2차 보고",
-        injured: true, directiveDone: 2,
-      },
-      {
-        id: "2024-0620-001", type: "감전", icon: "⚡",
-        location: "충청남도 천안시 서북구", worker: "이민준 작업자",
-        occurredAt: "2024.06.20 10:12", status: "완료", reportStep: "4차 보고",
-        injured: false, directiveDone: 5,
-      },
-      {
-        id: "2024-0618-002", type: "낙하/비래", icon: "🪨",
-        location: "충청남도 공주시 반포면", worker: "박성우 작업자",
-        occurredAt: "2024.06.18 15:48", status: "완료", reportStep: "4차 보고",
-        injured: true, directiveDone: 5,
-      },
-    ];
 
-    const activeList = ACCIDENTS.filter(a => a.status === "진행중");
-    const doneList   = ACCIDENTS.filter(a => a.status === "완료");
+    // Supabase에서 사고 목록 불러오기
+    const loadReports = async () => {
+      setReportsLoading(true);
+      const { data } = await supabase
+        .from("accident_reports")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (data) setAccidentReports(data);
+      setReportsLoading(false);
+    };
+
+    if (accidentReports.length === 0 && !reportsLoading) loadReports();
+
+    const ACCIDENT_ICONS = { "추락": "🧗", "감전": "⚡", "낙하/비래": "🪨", "화재": "🔥", "끼임": "⚙️", "충돌": "💥" };
+
+    const activeList = accidentReports.filter(a => a.status === "진행중");
+    const doneList   = accidentReports.filter(a => a.status === "완료");
+
+    const formatDate = (d) => {
+      if (!d) return "-";
+      const dt = new Date(d);
+      return `${dt.getFullYear()}.${String(dt.getMonth()+1).padStart(2,"0")}.${String(dt.getDate()).padStart(2,"0")} ${String(dt.getHours()).padStart(2,"0")}:${String(dt.getMinutes()).padStart(2,"0")}`;
+    };
 
     return (
       <div style={{ ...styles.phone, background: "#F7F8FC" }}>
@@ -2216,22 +2220,32 @@ export default function App() {
               상급자 모니터링 대시보드
             </div>
           </div>
-          <button
-            onClick={() => go(SCREENS.LOGIN)}
-            style={{
-              background: "rgba(255,255,255,0.15)", border: "none",
-              borderRadius: 8, padding: "6px 12px", color: "#fff",
-              fontSize: 12, cursor: "pointer",
-            }}
-          >로그아웃</button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              onClick={loadReports}
+              style={{
+                background: "rgba(255,255,255,0.15)", border: "none",
+                borderRadius: 8, padding: "6px 12px", color: "#fff",
+                fontSize: 12, cursor: "pointer",
+              }}
+            >🔄 새로고침</button>
+            <button
+              onClick={() => go(SCREENS.LOGIN)}
+              style={{
+                background: "rgba(255,255,255,0.15)", border: "none",
+                borderRadius: 8, padding: "6px 12px", color: "#fff",
+                fontSize: 12, cursor: "pointer",
+              }}
+            >로그아웃</button>
+          </div>
         </div>
 
         {/* 요약 카드 */}
         <div style={{ display: "flex", gap: 10, padding: "14px 16px 0" }}>
           {[
-            { label: "전체",   value: ACCIDENTS.length, bg: "#fff",    color: "#111",    border: "#E2E8F0" },
-            { label: "진행중", value: activeList.length, bg: "#FFF5F5", color: "#C53030", border: "#FED7D7" },
-            { label: "완료",   value: doneList.length,   bg: "#F0FFF4", color: "#276749", border: "#9AE6B4" },
+            { label: "전체",   value: accidentReports.length, bg: "#fff",    color: "#111",    border: "#E2E8F0" },
+            { label: "진행중", value: activeList.length,       bg: "#FFF5F5", color: "#C53030", border: "#FED7D7" },
+            { label: "완료",   value: doneList.length,         bg: "#F0FFF4", color: "#276749", border: "#9AE6B4" },
           ].map(c => (
             <div key={c.label} style={{
               flex: 1, background: c.bg, border: `1px solid ${c.border}`,
@@ -2243,92 +2257,94 @@ export default function App() {
           ))}
         </div>
 
-        {/* 진행중 사고 목록 */}
+        {/* 사고 목록 */}
         <div style={{ flex: 1, overflowY: "auto", padding: "16px 16px 20px" }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: "#111", marginBottom: 10 }}>
-            🚨 진행중인 사고
-          </div>
 
-          {activeList.length === 0 ? (
-            <div style={{
-              background: "#F0FFF4", border: "1px solid #9AE6B4",
-              borderRadius: 10, padding: "20px", textAlign: "center",
-              fontSize: 13, color: "#276749", fontWeight: 600,
-            }}>✅ 현재 진행중인 사고가 없습니다.</div>
-          ) : (
-            activeList.map(acc => (
-              <button
-                key={acc.id}
-                onClick={() => go(SCREENS.SUPERVISOR)}
-                style={{
-                  width: "100%", background: "#fff",
-                  border: "1.5px solid #FED7D7", borderRadius: 12,
-                  padding: "14px", marginBottom: 10, textAlign: "left",
-                  cursor: "pointer", boxShadow: "0 2px 8px rgba(229,62,62,0.1)",
-                }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontSize: 20 }}>{acc.icon}</span>
-                    <span style={{ fontSize: 15, fontWeight: 700, color: "#111" }}>{acc.type}</span>
-                    {acc.injured && (
-                      <span style={{ background: "#FFF5F5", color: "#E53E3E", fontSize: 11, fontWeight: 700, padding: "2px 7px", borderRadius: 6, border: "1px solid #FED7D7" }}>
-                        부상자 있음
-                      </span>
-                    )}
-                  </div>
-                  <span style={{
-                    background: "#FFF5F5", color: "#C53030", fontSize: 11,
-                    fontWeight: 700, padding: "3px 10px", borderRadius: 12,
-                    border: "1px solid #FED7D7",
-                  }}>● 진행중</span>
-                </div>
-                <div style={{ fontSize: 12, color: "#555", lineHeight: 1.7 }}>
-                  <div>📍 {acc.location}</div>
-                  <div>👷 {acc.worker}</div>
-                  <div>🕐 {acc.occurredAt}</div>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10 }}>
-                  <span style={{ background: "#EBF8FF", color: "#2B6CB0", fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 6 }}>
-                    {acc.reportStep}
-                  </span>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <div style={{ width: 60, height: 4, background: "#E2E8F0", borderRadius: 2, overflow: "hidden" }}>
-                      <div style={{ height: "100%", width: `${(acc.directiveDone/5)*100}%`, background: "#E53E3E", borderRadius: 2 }} />
-                    </div>
-                    <span style={{ fontSize: 11, color: "#888" }}>조치 {acc.directiveDone}/5</span>
-                  </div>
-                </div>
-              </button>
-            ))
-          )}
-
-          {/* 완료된 사고 */}
-          <div style={{ fontSize: 14, fontWeight: 700, color: "#111", marginBottom: 10, marginTop: 8 }}>
-            ✅ 완료된 사고
-          </div>
-          {doneList.map(acc => (
-            <div key={acc.id} style={{
-              background: "#fff", border: "1px solid #E2E8F0",
-              borderRadius: 12, padding: "12px 14px", marginBottom: 8,
-              opacity: 0.75,
-            }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 18 }}>{acc.icon}</span>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: "#333" }}>{acc.type}</div>
-                    <div style={{ fontSize: 11, color: "#888" }}>{acc.occurredAt} · {acc.worker}</div>
-                  </div>
-                </div>
-                <span style={{
-                  background: "#F0FFF4", color: "#276749", fontSize: 11,
-                  fontWeight: 700, padding: "3px 10px", borderRadius: 12,
-                  border: "1px solid #9AE6B4",
-                }}>✓ 완료</span>
-              </div>
+          {reportsLoading ? (
+            <div style={{ textAlign: "center", padding: "40px 0", color: "#888", fontSize: 14 }}>
+              불러오는 중...
             </div>
-          ))}
+          ) : (
+            <>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "#111", marginBottom: 10 }}>
+                🚨 진행중인 사고
+              </div>
+
+              {activeList.length === 0 ? (
+                <div style={{
+                  background: "#F0FFF4", border: "1px solid #9AE6B4",
+                  borderRadius: 10, padding: "20px", textAlign: "center",
+                  fontSize: 13, color: "#276749", fontWeight: 600, marginBottom: 16,
+                }}>✅ 현재 진행중인 사고가 없습니다.</div>
+              ) : (
+                activeList.map(acc => (
+                  <button
+                    key={acc.id}
+                    onClick={() => go(SCREENS.SUPERVISOR)}
+                    style={{
+                      width: "100%", background: "#fff",
+                      border: "1.5px solid #FED7D7", borderRadius: 12,
+                      padding: "14px", marginBottom: 10, textAlign: "left",
+                      cursor: "pointer", boxShadow: "0 2px 8px rgba(229,62,62,0.1)",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ fontSize: 20 }}>{ACCIDENT_ICONS[acc.accident_type] || "🚨"}</span>
+                        <span style={{ fontSize: 15, fontWeight: 700, color: "#111" }}>{acc.accident_type}</span>
+                        {acc.has_injured && (
+                          <span style={{ background: "#FFF5F5", color: "#E53E3E", fontSize: 11, fontWeight: 700, padding: "2px 7px", borderRadius: 6, border: "1px solid #FED7D7" }}>
+                            부상자 있음
+                          </span>
+                        )}
+                      </div>
+                      <span style={{
+                        background: "#FFF5F5", color: "#C53030", fontSize: 11,
+                        fontWeight: 700, padding: "3px 10px", borderRadius: 12,
+                        border: "1px solid #FED7D7",
+                      }}>● 진행중</span>
+                    </div>
+                    <div style={{ fontSize: 12, color: "#555", lineHeight: 1.7 }}>
+                      <div>📍 {acc.location}</div>
+                      <div>👷 {acc.worker_name} · {acc.work_type}</div>
+                      <div>🕐 {formatDate(acc.created_at)}</div>
+                    </div>
+                  </button>
+                ))
+              )}
+
+              {/* 완료된 사고 */}
+              {doneList.length > 0 && (
+                <>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: "#111", marginBottom: 10, marginTop: 8 }}>
+                    ✅ 완료된 사고
+                  </div>
+                  {doneList.map(acc => (
+                    <div key={acc.id} style={{
+                      background: "#fff", border: "1px solid #E2E8F0",
+                      borderRadius: 12, padding: "12px 14px", marginBottom: 8,
+                      opacity: 0.75,
+                    }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ fontSize: 18 }}>{ACCIDENT_ICONS[acc.accident_type] || "🚨"}</span>
+                          <div>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: "#333" }}>{acc.accident_type}</div>
+                            <div style={{ fontSize: 11, color: "#888" }}>{formatDate(acc.created_at)} · {acc.worker_name}</div>
+                          </div>
+                        </div>
+                        <span style={{
+                          background: "#F0FFF4", color: "#276749", fontSize: 11,
+                          fontWeight: 700, padding: "3px 10px", borderRadius: 12,
+                          border: "1px solid #9AE6B4",
+                        }}>✓ 완료</span>
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
+            </>
+          )}
         </div>
       </div>
     );
