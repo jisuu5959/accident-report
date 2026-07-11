@@ -243,6 +243,7 @@ export default function App() {
 
   const [showMockAlert, setShowMockAlert] = useState(false);
   const [isMock, setIsMock] = useState(false);
+  const [mockCheck, setMockCheck] = useState({ stop: false, call119: false });
   const [showHospitalInput, setShowHospitalInput] = useState(false);
   const [hospitalName, setHospitalName] = useState("");
   const [hospitalSubmitted, setHospitalSubmitted] = useState(false);
@@ -989,39 +990,68 @@ export default function App() {
 
                 {/* 지시사항 */}
                 <div style={{ padding: "20px 20px 8px" }}>
-                  <div style={{
-                    background: "#FFF5F5", border: "2px solid #E53E3E",
-                    borderRadius: 12, padding: "16px", marginBottom: 12,
-                    display: "flex", gap: 12, alignItems: "flex-start",
-                  }}>
-                    <span style={{ fontSize: 24, flexShrink: 0 }}>🚫</span>
-                    <div>
-                      <div style={{ fontSize: 15, fontWeight: 800, color: "#C53030", marginBottom: 4 }}>
-                        즉시 작업 중지
+
+                  {/* 작업 중지 체크 */}
+                  <button
+                    onClick={() => setMockCheck(prev => ({ ...prev, stop: !prev.stop }))}
+                    style={{
+                      width: "100%", background: mockCheck.stop ? "#FFF5F5" : "#fff",
+                      border: `2px solid ${mockCheck.stop ? "#E53E3E" : "#E2E8F0"}`,
+                      borderRadius: 12, padding: "14px", marginBottom: 10,
+                      cursor: "pointer", textAlign: "left",
+                      display: "flex", gap: 12, alignItems: "flex-start",
+                    }}
+                  >
+                    <div style={{
+                      width: 24, height: 24, borderRadius: 6, flexShrink: 0,
+                      background: mockCheck.stop ? "#E53E3E" : "#fff",
+                      border: `2px solid ${mockCheck.stop ? "#E53E3E" : "#CBD5E0"}`,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      marginTop: 2,
+                    }}>
+                      {mockCheck.stop && <span style={{ color: "#fff", fontSize: 14, fontWeight: 800 }}>✓</span>}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 15, fontWeight: 800, color: "#C53030", marginBottom: 4, display: "flex", alignItems: "center", gap: 8 }}>
+                        <span>🚫</span> 즉시 작업 중지
                       </div>
                       <div style={{ fontSize: 13, color: "#555", lineHeight: 1.6 }}>
                         현장 내 모든 작업을 즉시 중단하고<br />
                         작업자를 안전한 곳으로 대피시키세요.
                       </div>
                     </div>
-                  </div>
+                  </button>
 
-                  <div style={{
-                    background: "#EBF8FF", border: "2px solid #2B6CB0",
-                    borderRadius: 12, padding: "16px", marginBottom: 20,
-                    display: "flex", gap: 12, alignItems: "flex-start",
-                  }}>
-                    <span style={{ fontSize: 24, flexShrink: 0 }}>🚑</span>
-                    <div>
-                      <div style={{ fontSize: 15, fontWeight: 800, color: "#2B6CB0", marginBottom: 4 }}>
-                        119 즉시 신고
+                  {/* 119 신고 체크 */}
+                  <button
+                    onClick={() => setMockCheck(prev => ({ ...prev, call119: !prev.call119 }))}
+                    style={{
+                      width: "100%", background: mockCheck.call119 ? "#EBF8FF" : "#fff",
+                      border: `2px solid ${mockCheck.call119 ? "#2B6CB0" : "#E2E8F0"}`,
+                      borderRadius: 12, padding: "14px", marginBottom: 16,
+                      cursor: "pointer", textAlign: "left",
+                      display: "flex", gap: 12, alignItems: "flex-start",
+                    }}
+                  >
+                    <div style={{
+                      width: 24, height: 24, borderRadius: 6, flexShrink: 0,
+                      background: mockCheck.call119 ? "#2B6CB0" : "#fff",
+                      border: `2px solid ${mockCheck.call119 ? "#2B6CB0" : "#CBD5E0"}`,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      marginTop: 2,
+                    }}>
+                      {mockCheck.call119 && <span style={{ color: "#fff", fontSize: 14, fontWeight: 800 }}>✓</span>}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 15, fontWeight: 800, color: "#2B6CB0", marginBottom: 4, display: "flex", alignItems: "center", gap: 8 }}>
+                        <span>🚑</span> 119 즉시 신고
                       </div>
                       <div style={{ fontSize: 13, color: "#555", lineHeight: 1.6 }}>
                         119에 신고하고 부상자 여부를<br />
                         확인 후 응급처치를 시행하세요.
                       </div>
                     </div>
-                  </div>
+                  </button>
 
                   <div style={{
                     background: "#FFFBEB", border: "1px solid #F6E05E",
@@ -1035,20 +1065,23 @@ export default function App() {
 
                   <button
                     onClick={() => {
+                      if (!mockCheck.stop || !mockCheck.call119) return;
                       setShowMockAlert(false);
                       go(SCREENS.ACCIDENT_TYPE);
                     }}
                     style={{
-                      width: "100%", padding: "16px", background: "#E53E3E",
+                      width: "100%", padding: "16px", background: (mockCheck.stop && mockCheck.call119) ? "#E53E3E" : "#CBD5E0",
                       border: "none", borderRadius: 12, fontSize: 16,
-                      fontWeight: 800, color: "#fff", cursor: "pointer",
+                      fontWeight: 800, color: "#fff", cursor: (mockCheck.stop && mockCheck.call119) ? "pointer" : "not-allowed",
                       marginBottom: 12,
-                      boxShadow: "0 4px 12px rgba(229,62,62,0.35)",
+                      boxShadow: (mockCheck.stop && mockCheck.call119) ? "0 4px 12px rgba(229,62,62,0.35)" : "none",
                     }}
-                  >확인 — 훈련 시작하기 →</button>
+                  >
+                    {(mockCheck.stop && mockCheck.call119) ? "확인 — 훈련 시작하기 →" : "위 항목을 모두 확인해주세요"}
+                  </button>
 
                   <button
-                    onClick={() => { setIsMock(false); setShowMockAlert(false); }}
+                    onClick={() => { setIsMock(false); setShowMockAlert(false); setMockCheck({ stop: false, call119: false }); }}
                     style={{
                       width: "100%", padding: "12px", background: "none",
                       border: "none", fontSize: 13, color: "#aaa",
