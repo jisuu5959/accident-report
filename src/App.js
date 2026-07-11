@@ -1176,17 +1176,30 @@ export default function App() {
           try {
             const res = await fetch(
               `https://dapi.kakao.com/v2/local/geo/coord2address.json?x=${lng}&y=${lat}`,
-              { headers: { Authorization: `KakaoAK ${KAKAO_KEY}` } }
+              { headers: { Authorization: `KakaoAK 79643dd3b407eebf29d5139a7c5543de` } }
             );
             const data = await res.json();
             if (data.documents && data.documents.length > 0) {
               const addr = data.documents[0].address;
               setGpsAddress(addr.address_name);
             } else {
-              setGpsAddress(`위도 ${lat.toFixed(4)}, 경도 ${lng.toFixed(4)}`);
+              // 카카오 실패 시 nominatim 사용
+              const res2 = await fetch(
+                `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=ko`
+              );
+              const data2 = await res2.json();
+              setGpsAddress(data2.display_name || `위도 ${lat.toFixed(4)}, 경도 ${lng.toFixed(4)}`);
             }
           } catch {
-            setGpsAddress(`위도 ${lat.toFixed(4)}, 경도 ${lng.toFixed(4)}`);
+            try {
+              const res2 = await fetch(
+                `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=ko`
+              );
+              const data2 = await res2.json();
+              setGpsAddress(data2.display_name || `위도 ${lat.toFixed(4)}, 경도 ${lng.toFixed(4)}`);
+            } catch {
+              setGpsAddress(`위도 ${lat.toFixed(4)}, 경도 ${lng.toFixed(4)}`);
+            }
           }
           setGpsLoading(false);
         },
