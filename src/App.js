@@ -85,6 +85,72 @@ const smsMessages = [
   },
 ];
 
+// ── 보고 완료 화면 컴포넌트 (카운트다운) ─────────────
+function CompleteScreen({ go }) {
+  const [countdown, setCountdown] = useState(5);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCountdown(prev => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          go(SCREENS.ACTIONS);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  return (
+    <div style={{
+      width: "100%", maxWidth: 375, minHeight: "100vh",
+      background: "#fff", display: "flex", flexDirection: "column",
+      fontFamily: "'Apple SD Gothic Neo', sans-serif",
+    }}>
+      <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 16px 4px", fontSize: 12, fontWeight: 700 }}>
+        <span>9:41</span><span>📶 🔋</span>
+      </div>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "32px 24px" }}>
+        <div style={{
+          width: 80, height: 80, borderRadius: "50%", background: "#E53E3E",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: 36, color: "#fff", marginBottom: 20,
+        }}>✓</div>
+        <div style={{ fontSize: 22, fontWeight: 800, color: "#111", marginBottom: 8, textAlign: "center" }}>
+          1차 보고가 완료되었습니다.
+        </div>
+        <div style={{ fontSize: 14, color: "#666", textAlign: "center", lineHeight: 1.6, marginBottom: 32 }}>
+          보고 내용이 등록되었으며,<br />지정된 대상자에게 전송되었습니다.
+        </div>
+
+        {/* 카운트다운 */}
+        <div style={{
+          width: 80, height: 80, borderRadius: "50%",
+          border: "4px solid #E53E3E", background: "#FFF5F5",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          marginBottom: 14,
+        }}>
+          <div style={{ fontSize: 32, fontWeight: 800, color: "#E53E3E" }}>{countdown}</div>
+        </div>
+        <div style={{ fontSize: 13, color: "#888", textAlign: "center", marginBottom: 32 }}>
+          {countdown}초 후 긴급조치 현황 입력으로 자동 이동합니다
+        </div>
+
+        <button
+          onClick={() => go(SCREENS.ACTIONS)}
+          style={{
+            padding: "13px 32px", background: "#E53E3E",
+            border: "none", borderRadius: 10, fontSize: 15,
+            fontWeight: 700, color: "#fff", cursor: "pointer",
+          }}
+        >지금 바로 이동하기 →</button>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [screen, setScreen] = useState(SCREENS.LOGIN);
   const [userRole, setUserRole] = useState(null);
@@ -1894,63 +1960,7 @@ export default function App() {
 
   // ── 화면 07: 보고 완료 ──────────────────────────────
   if (screen === SCREENS.COMPLETE) {
-    const [countdown, setCountdown] = useState(5);
-
-    useEffect(() => {
-      const timer = setInterval(() => {
-        setCountdown(prev => {
-          if (prev <= 1) {
-            clearInterval(timer);
-            go(SCREENS.ACTIONS);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-      return () => clearInterval(timer);
-    }, []);
-
-    return (
-      <div style={styles.phone}><NotifBanner /><NotifPopup /><HospitalInputPopup />
-        <div style={styles.statusBar}><span>9:41</span><span>📶 🔋</span></div>
-        <div style={{ flex: 1, overflowY: "auto", padding: "32px 24px 20px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-          {/* 완료 아이콘 */}
-          <div style={{
-            width: 80, height: 80, borderRadius: "50%", background: "#E53E3E",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 36, color: "#fff", marginBottom: 20,
-          }}>✓</div>
-          <div style={{ fontSize: 22, fontWeight: 800, color: "#111", marginBottom: 8, textAlign: "center" }}>
-            1차 보고가 완료되었습니다.
-          </div>
-          <div style={{ fontSize: 14, color: "#666", textAlign: "center", lineHeight: 1.6, marginBottom: 32 }}>
-            보고 내용이 등록되었으며,<br />지정된 대상자에게 전송되었습니다.
-          </div>
-
-          {/* 카운트다운 */}
-          <div style={{
-            width: 72, height: 72, borderRadius: "50%",
-            border: "3px solid #E53E3E", background: "#FFF5F5",
-            display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-            marginBottom: 14,
-          }}>
-            <div style={{ fontSize: 28, fontWeight: 800, color: "#E53E3E", lineHeight: 1 }}>{countdown}</div>
-          </div>
-          <div style={{ fontSize: 13, color: "#888", textAlign: "center", marginBottom: 32 }}>
-            {countdown}초 후 긴급조치 현황 입력으로 이동합니다
-          </div>
-
-          <button
-            onClick={() => go(SCREENS.ACTIONS)}
-            style={{
-              padding: "12px 28px", background: "#E53E3E",
-              border: "none", borderRadius: 10, fontSize: 14,
-              fontWeight: 700, color: "#fff", cursor: "pointer",
-            }}
-          >지금 바로 이동하기 →</button>
-        </div>
-      </div>
-    );
+    return <CompleteScreen go={go} />;
   }
 
   // ── 화면 07-B: 현장작업자 보고현황 (타임라인 + 상급자 조치 지시) ─
