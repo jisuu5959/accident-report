@@ -117,14 +117,18 @@ export default function App() {
   const [photoError, setPhotoError] = useState(false);
   const [checkedRecipients, setCheckedRecipients] = useState([]);
   const [actionStatus, setActionStatus] = useState({
-    stop: "idle",      // idle | done | partial
+    stop: "partial",   // 작업 중지 항목 하나 체크됨
     control: "idle",
     report119: "idle",
   });
   const [actionTimes, setActionTimes] = useState({}); // 조치 항목별 마지막 상태변경 시각
   // 세부 체크리스트 항목별 체크여부/체크시각 (key: "stop-0" 형태)
-  const [subItemChecked, setSubItemChecked] = useState({});
-  const [subItemTimes, setSubItemTimes] = useState({});
+  const [subItemChecked, setSubItemChecked] = useState({ "stop-0": true });
+  const [subItemTimes, setSubItemTimes] = useState(() => {
+    const now = new Date();
+    const hhmm = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
+    return { "stop-0": hhmm };
+  });
   // 상급자 체크리스트 state
   const [checklistDone, setChecklistDone] = useState({
     작업중지: true, 신고119: true, 현장통제: false, 응급조치: false, 현장보존: false,
@@ -1890,10 +1894,26 @@ export default function App() {
 
   // ── 화면 07: 보고 완료 ──────────────────────────────
   if (screen === SCREENS.COMPLETE) {
+    const [countdown, setCountdown] = useState(5);
+
+    useEffect(() => {
+      const timer = setInterval(() => {
+        setCountdown(prev => {
+          if (prev <= 1) {
+            clearInterval(timer);
+            go(SCREENS.ACTIONS);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      return () => clearInterval(timer);
+    }, []);
+
     return (
       <div style={styles.phone}><NotifBanner /><NotifPopup /><HospitalInputPopup />
         <div style={styles.statusBar}><span>9:41</span><span>📶 🔋</span></div>
-        <div style={{ flex: 1, overflowY: "auto", padding: "32px 24px 20px", display: "flex", flexDirection: "column", alignItems: "center" }}>
+        <div style={{ flex: 1, overflowY: "auto", padding: "32px 24px 20px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
           {/* 완료 아이콘 */}
           <div style={{
             width: 80, height: 80, borderRadius: "50%", background: "#E53E3E",
@@ -1903,51 +1923,31 @@ export default function App() {
           <div style={{ fontSize: 22, fontWeight: 800, color: "#111", marginBottom: 8, textAlign: "center" }}>
             1차 보고가 완료되었습니다.
           </div>
-          <div style={{ fontSize: 14, color: "#666", textAlign: "center", lineHeight: 1.6, marginBottom: 28 }}>
+          <div style={{ fontSize: 14, color: "#666", textAlign: "center", lineHeight: 1.6, marginBottom: 32 }}>
             보고 내용이 등록되었으며,<br />지정된 대상자에게 전송되었습니다.
           </div>
 
-          {/* 다음 단계 안내 카드 */}
+          {/* 카운트다운 */}
           <div style={{
-            width: "100%", background: "#FFF5F5", border: "1px solid #FED7D7",
-            borderRadius: 12, padding: "16px",
-            display: "flex", gap: 10, alignItems: "flex-start",
+            width: 72, height: 72, borderRadius: "50%",
+            border: "3px solid #E53E3E", background: "#FFF5F5",
+            display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+            marginBottom: 14,
           }}>
-            <span style={{ fontSize: 18, flexShrink: 0 }}>⏳</span>
-            <div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: "#C53030", marginBottom: 4 }}>
-                다음 단계: 긴급 조치 현황 입력
-              </div>
-              <div style={{ fontSize: 12, color: "#744210", lineHeight: 1.6 }}>
-                작업 중지, 현장 통제, 119 신고 등 현재까지 진행된 조치를 입력해주세요. 조치/미조치를 확인할 때마다 시각이 자동으로 기록됩니다.
-              </div>
-            </div>
+            <div style={{ fontSize: 28, fontWeight: 800, color: "#E53E3E", lineHeight: 1 }}>{countdown}</div>
           </div>
-        </div>
-        <div style={{ padding: "0 24px 40px", display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ fontSize: 13, color: "#888", textAlign: "center", marginBottom: 32 }}>
+            {countdown}초 후 긴급조치 현황 입력으로 이동합니다
+          </div>
+
           <button
-            style={{
-              width: "100%", padding: "15px", background: "#E53E3E",
-              border: "none", borderRadius: 12, fontSize: 16,
-              fontWeight: 700, cursor: "pointer", color: "#fff",
-              display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-            }}
             onClick={() => go(SCREENS.ACTIONS)}
-          >🚨 긴급 조치 현황 입력하기</button>
-          <button
             style={{
-              width: "100%", padding: "15px", background: "#1A365D",
-              border: "none", borderRadius: 12, fontSize: 15,
-              fontWeight: 700, cursor: "pointer", color: "#fff",
-              display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+              padding: "12px 28px", background: "#E53E3E",
+              border: "none", borderRadius: 10, fontSize: 14,
+              fontWeight: 700, color: "#fff", cursor: "pointer",
             }}
-            onClick={() => go(SCREENS.WORKER_TIMELINE)}
-          >📊 보고 현황 바로 보기</button>
-          <button style={{
-            width: "100%", padding: "13px", background: "#fff",
-            border: "1.5px solid #ddd", borderRadius: 12, fontSize: 14,
-            fontWeight: 600, cursor: "pointer", color: "#666",
-          }} onClick={goHome}>홈으로 이동</button>
+          >지금 바로 이동하기 →</button>
         </div>
       </div>
     );
