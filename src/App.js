@@ -2828,8 +2828,8 @@ export default function App() {
 
     const CHECKLIST_META = [
       { key: "재지시대피", label: "작업중지 재지시 + 대피 요청", icon: "🚫", color: "#C53030" },
-      { key: "현장보존",   label: "현장 보존",                   icon: "🔒", color: "#276749" },
-      { key: "병원이송",   label: "병원 이송",                   icon: "🏥", color: "#6B46C1" },
+      { key: "현장보존", label: "현장 보존", icon: "🔒", color: "#276749" },
+      { key: "병원이송", label: "병원 이송", icon: "🏥", color: "#6B46C1" },
     ];
 
     // 고정 이벤트 (사고 발생 + 보고 접수)
