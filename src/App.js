@@ -596,6 +596,17 @@ export default function App() {
   ) : null;
 
   // ── 화면 00: 로그인 ──────────────────────────────────
+  // 전역 알람 오버레이
+  const GlobalOverlay = () => (
+    <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, pointerEvents: "none", zIndex: 99999 }}>
+      <div style={{ pointerEvents: "auto" }}>
+        <NotifBanner />
+        <NotifPopup />
+        <HospitalInputPopup />
+      </div>
+    </div>
+  );
+
   if (screen === SCREENS.LOGIN) {
 
     const formatPhone = (v) => {
@@ -660,7 +671,7 @@ export default function App() {
     };
 
     return (
-      <div style={styles.phone}><NotifBanner /><NotifPopup /><HospitalInputPopup />
+      <div style={styles.phone}><GlobalOverlay />
         <div style={styles.statusBar}><span>9:41</span><span>📶 </span></div>
 
         <div style={{
@@ -884,7 +895,7 @@ export default function App() {
   // ── 화면 01: 메인 ──────────────────────────────────────
   if (screen === SCREENS.MAIN) {
     return (
-      <div style={styles.phone}><NotifBanner /><NotifPopup /><HospitalInputPopup />
+      <div style={styles.phone}><GlobalOverlay />
         <div style={styles.statusBar}>
           <span>9:41</span>
           <span>📶 </span>
@@ -1094,7 +1105,7 @@ export default function App() {
   // ── 화면 02: 사고 유형 선택 ──────────────────────────
   if (screen === SCREENS.ACCIDENT_TYPE) {
     return (
-      <div style={styles.phone}><NotifBanner /><NotifPopup /><HospitalInputPopup />
+      <div style={styles.phone}><GlobalOverlay />
         <div style={styles.statusBar}><span>9:41</span><span>📶 </span></div>
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.MAIN)}>‹</button>
@@ -1220,7 +1231,7 @@ export default function App() {
     }
 
     return (
-      <div style={styles.phone}><NotifBanner /><NotifPopup /><HospitalInputPopup />
+      <div style={styles.phone}><GlobalOverlay />
         <div style={styles.statusBar}><span>9:41</span><span>📶 </span></div>
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.ACCIDENT_TYPE)}>‹</button>
@@ -1359,7 +1370,7 @@ export default function App() {
   // ── 화면 04: 사고 내용 입력 ──────────────────────────
   if (screen === SCREENS.DETAILS) {
     return (
-      <div style={styles.phone}><NotifBanner /><NotifPopup /><HospitalInputPopup />
+      <div style={styles.phone}><GlobalOverlay />
         <div style={styles.statusBar}><span>9:41</span><span>📶 </span></div>
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.LOCATION)}>‹</button>
@@ -1512,7 +1523,7 @@ export default function App() {
     };
 
     return (
-      <div style={styles.phone}><NotifBanner /><NotifPopup /><HospitalInputPopup />
+      <div style={styles.phone}><GlobalOverlay />
         <div style={styles.statusBar}><span>9:41</span><span>📶 </span></div>
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.DETAILS)}>‹</button>
@@ -1690,7 +1701,7 @@ export default function App() {
     const totalCount = ACTION_ITEMS.length;
 
     return (
-      <div style={styles.phone}><NotifBanner /><NotifPopup /><HospitalInputPopup />
+      <div style={styles.phone}><GlobalOverlay />
         <div style={styles.statusBar}><span>9:41</span><span>📶 </span></div>
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.WORKER_TIMELINE)}>‹</button>
@@ -1856,7 +1867,7 @@ export default function App() {
     const canSend = checkedRecipients.length > 0;
 
     return (
-      <div style={styles.phone}><NotifBanner /><NotifPopup /><HospitalInputPopup />
+      <div style={styles.phone}><GlobalOverlay />
         <div style={styles.statusBar}><span>9:41</span><span>📶 </span></div>
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.PHOTOS)}>‹</button>
@@ -2081,7 +2092,7 @@ export default function App() {
     const allEvents = [...fixedEvents, ...workerActionEvents, ...confirmedNotifs, ...sentDirectives, ...pendingDirectives];
 
     return (
-      <div style={styles.phone}><NotifBanner /><NotifPopup /><HospitalInputPopup />
+      <div style={styles.phone}><GlobalOverlay />
         <div style={styles.statusBar}><span>9:41</span><span>📶 </span></div>
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.COMPLETE)}>‹</button>
@@ -2439,7 +2450,7 @@ export default function App() {
       : emergencyUsers.filter(u => emergencyTab === "전체" || u.work_type === emergencyTab || (!u.work_type && emergencyTab === "전체"));
 
     return (
-      <div style={styles.phone}><NotifBanner /><NotifPopup /><HospitalInputPopup />
+      <div style={styles.phone}><GlobalOverlay />
         <div style={styles.statusBar}><span>9:41</span><span>📶 </span></div>
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.MAIN)}>‹</button>
@@ -2647,7 +2658,7 @@ export default function App() {
     };
 
     return (
-      <div style={styles.phone}><NotifBanner /><NotifPopup /><HospitalInputPopup />
+      <div style={styles.phone}><GlobalOverlay />
         <div style={styles.statusBar}><span>9:41</span><span>📶 </span></div>
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.SUPERVISOR_DASHBOARD)}>‹</button>
@@ -2828,7 +2839,7 @@ export default function App() {
   // ── 화면 08-B: 보고 현황 타임라인 ────────────────────
   if (screen === SCREENS.TIMELINE) {
     return (
-      <div style={styles.phone}><NotifBanner /><NotifPopup /><HospitalInputPopup />
+      <div style={styles.phone}><GlobalOverlay />
         <div style={styles.statusBar}><span>9:41</span><span>배터리</span></div>
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={goHome}>홈</button>
