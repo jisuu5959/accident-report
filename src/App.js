@@ -2378,7 +2378,7 @@ export default function App() {
                 activeList.map(acc => (
                   <button
                     key={acc.id}
-                    onClick={() => go(SCREENS.TIMELINE)}
+                    onClick={() => go(SCREENS.SUPERVISOR)}
                     style={{
                       width: "100%", background: "#fff",
                       border: "1.5px solid #FED7D7", borderRadius: 12,
