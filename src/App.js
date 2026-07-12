@@ -2863,6 +2863,7 @@ export default function App() {
               borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: "pointer",
               display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
             }}
+            onClick={() => go(SCREENS.TIMELINE)}
           >
              보고 현황 전체 보기
           </button>

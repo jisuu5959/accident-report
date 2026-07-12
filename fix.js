@@ -1,19 +1,16 @@
 const fs = require('fs');
 let c = fs.readFileSync('src/App.js', 'utf8');
 
-// 새로고침 버튼 중복 제거
-const doubleBtn = `              <button onClick={loadSituationReports} style={{ fontSize: 12, padding: "4px 12px", cursor: "pointer" }}>새로고침</button>
-              <button onClick={loadSituationReports} style={{ fontSize: 12, padding: "4px 12px", cursor: "pointer" }}>새로고침</button>`;
+// 보고현황 버튼에 onClick 추가
+c = c.replace(
+  `              display: "flex", alignItems: "center", justifyContent: "center", gap: 8,\r\n            }}\r\n          >\r\n             보고 현황 전체 보기`,
+  `              display: "flex", alignItems: "center", justifyContent: "center", gap: 8,\r\n            }}\r\n            onClick={() => go(SCREENS.TIMELINE)}\r\n          >\r\n             보고 현황 전체 보기`
+);
 
-const singleBtn = `              <button onClick={loadSituationReports} style={{ fontSize: 12, padding: "4px 12px", cursor: "pointer" }}>새로고침</button>`;
-
-if(c.includes(doubleBtn)) {
-  c = c.replace(doubleBtn, singleBtn);
-  console.log('완료');
-} else {
-  console.log('못찾음 - 직접 확인 필요');
-  const idx = c.indexOf('새로고침');
-  console.log(JSON.stringify(c.slice(idx-50, idx+200)));
-}
+// dispatches 구독 위치 확인
+const idx = c.indexOf('dispatches-channel');
+console.log('dispatches 위치:', idx);
+console.log(JSON.stringify(c.slice(idx-100, idx+50)));
 
 fs.writeFileSync('src/App.js', c, 'utf8');
+console.log('완료');
