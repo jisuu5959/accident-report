@@ -272,6 +272,35 @@ export default function App() {
             return;
           }
 
+          if (directive.action_key === "병원이름_입력완료") {
+            const hospNotif = {
+              id: directive.id,
+              title: "병원 이송 정보 접수",
+              body: directive.message,
+              message: directive.message,
+              actionLabel: "병원 이송 정보",
+              supervisorName: directive.supervisor_name,
+              sentAt: directive.sent_at,
+            };
+            setNotifBanner(hospNotif);
+            setTimeout(() => setNotifBanner(null), 5000);
+            return;
+          }
+
+          if (directive.action_key === "상황종료") {
+            const closeNotif = {
+              id: directive.id,
+              title: "상황 종료",
+              body: "모든 조치가 완료되었습니다. 상황이 종료됩니다.",
+              message: "모든 조치가 완료되었습니다.",
+              actionLabel: "상황 종료",
+              supervisorName: "안전 상황실",
+              sentAt: directive.sent_at,
+            };
+            setActiveNotif(closeNotif);
+            return;
+          }
+
           const newNotif = {
             id: directive.id,
             title: `상급자 조치 지시`,
