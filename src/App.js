@@ -3194,7 +3194,7 @@ export default function App() {
                     }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
                         <span style={{ fontWeight: 700, fontSize: 13, color: "#111" }}>{acc.accident_type} 사고</span>
-                        <span style={{ background: "#FFF5F5", color: "#C53030", fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 20, border: "1px solid #FED7D7" }}>진행중</span>
+                        <span style={{ background: acc.status === "완료" ? "#F0FFF4" : "#FFF5F5", color: acc.status === "완료" ? "#276749" : "#C53030", fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 20, border: acc.status === "완료" ? "1px solid #9AE6B4" : "1px solid #FED7D7" }}>{acc.status || "진행중"}</span>
                       </div>
                       <div style={{ fontSize: 11, color: "#888", lineHeight: 1.6 }}>
                         {acc.team || "충청1팀"} · {acc.worker_name} · {acc.work_type}<br />{acc.location}
