@@ -3290,8 +3290,10 @@ export default function App() {
                       message: "모든 조치가 완료되었습니다. 상황을 종료합니다.",
                       supervisor_name: "안전 상황실",
                     });
-                    // 사고 목록 갱신
-                    loadSituationReports();
+                    // 사고 목록 갱신 - state 즉시 업데이트
+                    setAccidentReports(prev => prev.map(a => 
+                      a.status === "진행중" ? {...a, status: "완료"} : a
+                    ));
                   }}
                   style={{
                     width: "100%", padding: "14px", background: "#1A365D",
