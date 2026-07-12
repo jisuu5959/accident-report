@@ -3123,10 +3123,6 @@ export default function App() {
                       <input value={newStaff.team} onChange={e => setNewStaff(p => ({...p, team: e.target.value}))} placeholder="충청1팀" style={{ width: "100%", padding: "8px 10px", border: "1px solid #E2E8F0", borderRadius: 6, fontSize: 13 }} />
                     </div>
                     <div>
-                      <div style={{ fontSize: 12, color: "#888", marginBottom: 4 }}>직책</div>
-                      <input value={newStaff.position} onChange={e => setNewStaff(p => ({...p, position: e.target.value}))} placeholder="팀장" style={{ width: "100%", padding: "8px 10px", border: "1px solid #E2E8F0", borderRadius: 6, fontSize: 13 }} />
-                    </div>
-                    <div>
                       <div style={{ fontSize: 12, color: "#888", marginBottom: 4 }}>업무유형</div>
                       <select value={newStaff.work_type} onChange={e => setNewStaff(p => ({...p, work_type: e.target.value}))} style={{ width: "100%", padding: "8px 10px", border: "1px solid #E2E8F0", borderRadius: 6, fontSize: 13 }}>
                         <option value="유지보수">유지보수</option>
@@ -3146,7 +3142,7 @@ export default function App() {
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead>
                     <tr style={{ background: "#F7FAFC", borderBottom: "1px solid #E2E8F0" }}>
-                      {["이름", "핸드폰", "역할", "소속팀", "직책", "업무유형", "관리"].map(h => (
+                      {["이름", "핸드폰", "역할", "소속팀", "업무유형", "관리"].map(h => (
                         <th key={h} style={{ padding: "10px 14px", fontSize: 12, fontWeight: 700, color: "#888", textAlign: "left" }}>{h}</th>
                       ))}
                     </tr>
@@ -3167,7 +3163,6 @@ export default function App() {
                             }}>{ROLE_LABEL[s.role]}</span>
                           </td>
                           <td style={{ padding: "10px 14px", fontSize: 13, color: "#555" }}>{s.team || "-"}</td>
-                          <td style={{ padding: "10px 14px", fontSize: 13, color: "#555" }}>{s.position || "-"}</td>
                           <td style={{ padding: "10px 14px", fontSize: 13, color: "#555" }}>{s.work_type || "-"}</td>
                           <td style={{ padding: "10px 14px" }}>
                             <button onClick={() => handleDeleteStaff(s.id)} style={{ fontSize: 11, padding: "3px 10px", background: "#FFF5F5", color: "#C53030", border: "1px solid #FED7D7", borderRadius: 6, cursor: "pointer" }}>비활성화</button>
@@ -3202,7 +3197,7 @@ export default function App() {
                         <span style={{ background: "#FFF5F5", color: "#C53030", fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 20, border: "1px solid #FED7D7" }}>진행중</span>
                       </div>
                       <div style={{ fontSize: 11, color: "#888", lineHeight: 1.6 }}>
-                        {acc.worker_name} · {acc.work_type}<br />{acc.location}
+                        {acc.team || "충청1팀"} · {acc.worker_name} · {acc.work_type}<br />{acc.location}
                       </div>
                     </div>
                   ))
@@ -3277,6 +3272,28 @@ export default function App() {
                   )}
                 </div>
               </div>
+
+              {/* 상황 종료 버튼 */}
+              <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 12, padding: 14 }}>
+                <button
+                  onClick={async () => {
+                    if(!window.confirm("상황을 종료하시겠습니까?")) return;
+                    await supabase.from("directives").insert({
+                      accident_id: "2024-0625-001",
+                      action_key: "상황종료",
+                      action_label: "상황 종료",
+                      message: "모든 조치가 완료되었습니다. 상황을 종료합니다.",
+                      supervisor_name: "안전 상황실",
+                    });
+                  }}
+                  style={{
+                    width: "100%", padding: "14px", background: "#1A365D",
+                    border: "none", borderRadius: 10, fontSize: 14,
+                    fontWeight: 700, color: "#fff", cursor: "pointer",
+                  }}
+                >상황 종료</button>
+              </div>
+
             </div>
           )}
         </div>
