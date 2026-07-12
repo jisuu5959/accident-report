@@ -215,7 +215,11 @@ export default function App() {
   const [accMin, setAccMin] = useState("");
   const [hospMin, setHospMin] = useState("");
   const [dispatchedMembers, setDispatchedMembers] = useState({});
-  const [tlEvents, setTlEvents] = useState([
+  const [staffList, setStaffList] = useState([]);
+  const [showAddStaff, setShowAddStaff] = useState(false);
+  const [newStaff, setNewStaff] = useState({ name: "", phone: "", role: "worker", team: "", position: "", work_type: "유지보수" });
+  const [situationTab, setSituationTab] = useState("사고 현황");
+    const [tlEvents, setTlEvents] = useState([
     { time: "14:35", text: "사고 발생", color: "#E24B4A" },
     { time: "14:36", text: "1차 보고 접수", color: "#E24B4A" },
     { time: "14:37", text: "작업중지 재지시 + 대피 요청", color: "#BA7517" },
@@ -2967,6 +2971,318 @@ export default function App() {
     );
   }
 
+
+  if (screen === SCREENS.SITUATION_ROOM) {
+    const MEMBERS = [
+      { id: "m1", role: "안전관리자", name: "이인판 차장", phone: "010-2345-6789" },
+      { id: "m2", role: "안전관리자", name: "박안전 과장", phone: "010-3456-1234" },
+      { id: "m3", role: "공사감독자", name: "김현당 팀장", phone: "010-1234-5678" },
+    ];
+
+    const loadSituationReports = async () => {
+      const { data } = await supabase
+        .from("accident_reports")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (data) setAccidentReports(data);
+    };
+
+    const loadStaff = async () => {
+      const { data } = await supabase
+        .from("users")
+        .select("*")
+        .eq("is_active", true)
+        .order("role", { ascending: true });
+      if (data) setStaffList(data);
+    };
+
+    if (accidentReports.length === 0) loadSituationReports();
+    if (situationTab === "직원 관리" && staffList.length === 0) loadStaff();
+
+    const nowHHMM = () => {
+      const d = new Date();
+      return String(d.getHours()).padStart(2,"0") + ":" + String(d.getMinutes()).padStart(2,"0");
+    };
+
+    const handleDispatch = async () => {
+      if (!selectedMember) return;
+      const time = nowHHMM();
+      const text = selectedMember.name + " 출동 지시" + (accMin ? " — 사고장소 " + accMin + "분" : "") + (hospMin ? " / 병원 " + hospMin + "분" : "");
+      setTlEvents(prev => [...prev, { time, text, color: "#185FA5" }]);
+      setDispatchedMembers(prev => ({ ...prev, [selectedMember.id]: true }));
+      setSelectedMember(null);
+      setAccMin("");
+      setHospMin("");
+      await supabase.from("dispatches").insert({
+        accident_id: "2024-0625-001",
+        dispatcher_name: selectedMember.name,
+        dispatcher_role: selectedMember.role,
+        accident_minutes: accMin ? parseInt(accMin) : null,
+        hospital_minutes: hospMin ? parseInt(hospMin) : null,
+      });
+    };
+
+    const handleAddStaff = async () => {
+      if (!newStaff.name || !newStaff.phone) return;
+      const { error } = await supabase.from("users").insert({
+        name: newStaff.name,
+        phone: newStaff.phone.replace(/-/g, ""),
+        role: newStaff.role,
+        team: newStaff.team,
+        position: newStaff.position,
+        work_type: newStaff.work_type || null,
+        is_active: true,
+      });
+      if (!error) {
+        setNewStaff({ name: "", phone: "", role: "worker", team: "", position: "", work_type: "유지보수" });
+        setShowAddStaff(false);
+        loadStaff();
+      }
+    };
+
+    const handleDeleteStaff = async (id) => {
+      await supabase.from("users").update({ is_active: false }).eq("id", id);
+      loadStaff();
+    };
+
+    const ROLE_LABEL = { worker: "현장 작업자", supervisor: "상급자", situation: "상황실" };
+
+    return (
+      <div style={{ display: "flex", height: "100vh", fontFamily: "'Apple SD Gothic Neo', sans-serif", background: "#F7F8FC" }}>
+        <GlobalOverlay />
+
+        {/* 사이드바 */}
+        <div style={{ width: 200, background: "#1A365D", display: "flex", flexDirection: "column", flexShrink: 0 }}>
+          <div style={{ padding: "20px 16px", borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "#fff" }}>안전 상황실</div>
+            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.6)", marginTop: 3 }}>SK O&S 중대재해 대응</div>
+          </div>
+          {["사고 현황", "직원 관리", "사고 이력", "비상 연락망", "보고서 출력", "설정"].map(label => (
+            <div key={label} onClick={() => { if(label === "사고 현황" || label === "직원 관리") setSituationTab(label); }} style={{
+              padding: "10px 16px", fontSize: 13, cursor: "pointer",
+              background: situationTab === label ? "rgba(255,255,255,0.15)" : "none",
+              color: situationTab === label ? "#fff" : "rgba(255,255,255,0.6)",
+            }}>{label}</div>
+          ))}
+          <div style={{ marginTop: "auto", padding: "16px" }}>
+            <button onClick={() => go(SCREENS.LOGIN)} style={{
+              width: "100%", padding: "8px", background: "rgba(255,255,255,0.1)",
+              border: "1px solid rgba(255,255,255,0.2)", borderRadius: 8,
+              color: "#fff", fontSize: 12, cursor: "pointer",
+            }}>로그아웃</button>
+          </div>
+        </div>
+
+        {/* 메인 */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          {/* 상단바 */}
+          <div style={{ padding: "12px 20px", background: "#fff", borderBottom: "1px solid #E2E8F0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "#111" }}>
+              {situationTab === "직원 관리" ? "직원 관리" : "실시간 사고 현황"}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              {situationTab === "사고 현황" && (
+                <button onClick={loadSituationReports} style={{ fontSize: 12, padding: "4px 12px", cursor: "pointer" }}>새로고침</button>
+              )}
+              {situationTab === "직원 관리" && (
+                <button onClick={() => setShowAddStaff(true)} style={{ fontSize: 12, padding: "4px 12px", background: "#E53E3E", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", fontWeight: 700 }}>+ 직원 추가</button>
+              )}
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#38A169" }} />
+                <span style={{ fontSize: 12, color: "#888" }}>실시간 연결</span>
+              </div>
+            </div>
+          </div>
+
+          {/* 직원 관리 탭 */}
+          {situationTab === "직원 관리" && (
+            <div style={{ flex: 1, overflowY: "auto", padding: 20 }}>
+              {/* 직원 추가 폼 */}
+              {showAddStaff && (
+                <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 12, padding: 16, marginBottom: 16 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: "#111", marginBottom: 12 }}>직원 추가</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 10 }}>
+                    <div>
+                      <div style={{ fontSize: 12, color: "#888", marginBottom: 4 }}>이름 *</div>
+                      <input value={newStaff.name} onChange={e => setNewStaff(p => ({...p, name: e.target.value}))} placeholder="홍길동" style={{ width: "100%", padding: "8px 10px", border: "1px solid #E2E8F0", borderRadius: 6, fontSize: 13 }} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 12, color: "#888", marginBottom: 4 }}>핸드폰 번호 *</div>
+                      <input value={newStaff.phone} onChange={e => setNewStaff(p => ({...p, phone: e.target.value}))} placeholder="010-0000-0000" style={{ width: "100%", padding: "8px 10px", border: "1px solid #E2E8F0", borderRadius: 6, fontSize: 13 }} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 12, color: "#888", marginBottom: 4 }}>역할 *</div>
+                      <select value={newStaff.role} onChange={e => setNewStaff(p => ({...p, role: e.target.value}))} style={{ width: "100%", padding: "8px 10px", border: "1px solid #E2E8F0", borderRadius: 6, fontSize: 13 }}>
+                        <option value="worker">현장 작업자</option>
+                        <option value="supervisor">상급자</option>
+                        <option value="situation">상황실</option>
+                      </select>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 12, color: "#888", marginBottom: 4 }}>소속팀</div>
+                      <input value={newStaff.team} onChange={e => setNewStaff(p => ({...p, team: e.target.value}))} placeholder="충청1팀" style={{ width: "100%", padding: "8px 10px", border: "1px solid #E2E8F0", borderRadius: 6, fontSize: 13 }} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 12, color: "#888", marginBottom: 4 }}>직책</div>
+                      <input value={newStaff.position} onChange={e => setNewStaff(p => ({...p, position: e.target.value}))} placeholder="팀장" style={{ width: "100%", padding: "8px 10px", border: "1px solid #E2E8F0", borderRadius: 6, fontSize: 13 }} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 12, color: "#888", marginBottom: 4 }}>업무유형</div>
+                      <select value={newStaff.work_type} onChange={e => setNewStaff(p => ({...p, work_type: e.target.value}))} style={{ width: "100%", padding: "8px 10px", border: "1px solid #E2E8F0", borderRadius: 6, fontSize: 13 }}>
+                        <option value="유지보수">유지보수</option>
+                        <option value="운용투자">운용투자</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button onClick={() => setShowAddStaff(false)} style={{ padding: "8px 16px", border: "1px solid #ddd", borderRadius: 6, fontSize: 13, cursor: "pointer", background: "#fff" }}>취소</button>
+                    <button onClick={handleAddStaff} style={{ padding: "8px 16px", background: "#E53E3E", border: "none", borderRadius: 6, fontSize: 13, fontWeight: 700, color: "#fff", cursor: "pointer" }}>저장</button>
+                  </div>
+                </div>
+              )}
+
+              {/* 직원 목록 */}
+              <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 12, overflow: "hidden" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr style={{ background: "#F7FAFC", borderBottom: "1px solid #E2E8F0" }}>
+                      {["이름", "핸드폰", "역할", "소속팀", "직책", "업무유형", "관리"].map(h => (
+                        <th key={h} style={{ padding: "10px 14px", fontSize: 12, fontWeight: 700, color: "#888", textAlign: "left" }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {staffList.length === 0 ? (
+                      <tr><td colSpan={7} style={{ padding: "20px", textAlign: "center", color: "#aaa", fontSize: 13 }}>직원을 불러오는 중...</td></tr>
+                    ) : (
+                      staffList.map((s, i) => (
+                        <tr key={s.id} style={{ borderBottom: "1px solid #F7F7F7", background: i % 2 === 0 ? "#fff" : "#FAFAFA" }}>
+                          <td style={{ padding: "10px 14px", fontSize: 13, fontWeight: 700, color: "#111" }}>{s.name}</td>
+                          <td style={{ padding: "10px 14px", fontSize: 13, color: "#555" }}>{s.phone?.replace(/(d{3})(d{4})(d{4})/, "$1-$2-$3")}</td>
+                          <td style={{ padding: "10px 14px" }}>
+                            <span style={{
+                              fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 10,
+                              background: s.role === "worker" ? "#FFF5F5" : s.role === "supervisor" ? "#EBF8FF" : "#F0FFF4",
+                              color: s.role === "worker" ? "#C53030" : s.role === "supervisor" ? "#2B6CB0" : "#276749",
+                            }}>{ROLE_LABEL[s.role]}</span>
+                          </td>
+                          <td style={{ padding: "10px 14px", fontSize: 13, color: "#555" }}>{s.team || "-"}</td>
+                          <td style={{ padding: "10px 14px", fontSize: 13, color: "#555" }}>{s.position || "-"}</td>
+                          <td style={{ padding: "10px 14px", fontSize: 13, color: "#555" }}>{s.work_type || "-"}</td>
+                          <td style={{ padding: "10px 14px" }}>
+                            <button onClick={() => handleDeleteStaff(s.id)} style={{ fontSize: 11, padding: "3px 10px", background: "#FFF5F5", color: "#C53030", border: "1px solid #FED7D7", borderRadius: 6, cursor: "pointer" }}>비활성화</button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* 사고 현황 탭 */}
+          {situationTab === "사고 현황" && (
+            <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+              {/* 사고 목록 */}
+              <div style={{ width: 260, background: "#fff", borderRight: "1px solid #E2E8F0", overflowY: "auto", flexShrink: 0 }}>
+                <div style={{ padding: "10px 14px", borderBottom: "1px solid #E2E8F0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontWeight: 700, fontSize: 13, color: "#111" }}>사고 목록</span>
+                </div>
+                {accidentReports.length === 0 ? (
+                  <div style={{ padding: "20px 14px", fontSize: 13, color: "#aaa", textAlign: "center" }}>사고 없음</div>
+                ) : (
+                  accidentReports.map(acc => (
+                    <div key={acc.id} onClick={() => setSelectedAccident(acc)} style={{
+                      padding: "12px 14px", borderBottom: "1px solid #E2E8F0", cursor: "pointer",
+                      background: selectedAccident?.id === acc.id ? "#EBF8FF" : "#fff",
+                    }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                        <span style={{ fontWeight: 700, fontSize: 13, color: "#111" }}>{acc.accident_type} 사고</span>
+                        <span style={{ background: "#FFF5F5", color: "#C53030", fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 20, border: "1px solid #FED7D7" }}>진행중</span>
+                      </div>
+                      <div style={{ fontSize: 11, color: "#888", lineHeight: 1.6 }}>
+                        {acc.worker_name} · {acc.work_type}<br />{acc.location}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* 상세 패널 */}
+              <div style={{ flex: 1, overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+                {/* 출동 지정 */}
+                <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 12, padding: 14 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#111", marginBottom: 10 }}>출동 지정</div>
+                  {["안전관리자", "공사감독자"].map(role => (
+                    <div key={role}>
+                      <div style={{ fontSize: 11, color: "#888", fontWeight: 700, marginBottom: 6 }}>{role}</div>
+                      {MEMBERS.filter(m => m.role === role).map(m => (
+                        <div key={m.id} onClick={() => !dispatchedMembers[m.id] && setSelectedMember(m)} style={{
+                          display: "flex", alignItems: "center", justifyContent: "space-between",
+                          padding: "8px 10px", borderRadius: 8, cursor: dispatchedMembers[m.id] ? "default" : "pointer",
+                          border: "1px solid " + (selectedMember?.id === m.id ? "#2B6CB0" : dispatchedMembers[m.id] ? "#9AE6B4" : "#E2E8F0"),
+                          background: selectedMember?.id === m.id ? "#EBF8FF" : dispatchedMembers[m.id] ? "#F0FFF4" : "#fff",
+                          marginBottom: 6,
+                        }}>
+                          <div>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: "#111" }}>{m.name}</div>
+                            <div style={{ fontSize: 11, color: "#888" }}>{m.role} · {m.phone}</div>
+                          </div>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: dispatchedMembers[m.id] ? "#276749" : selectedMember?.id === m.id ? "#2B6CB0" : "#aaa" }}>
+                            {dispatchedMembers[m.id] ? "출동중" : selectedMember?.id === m.id ? "선택됨" : "클릭하여 선택"}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                  {selectedMember && (
+                    <div style={{ marginTop: 10, padding: 12, background: "#EBF8FF", borderRadius: 8, border: "1px solid #90CDF4" }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: "#2B6CB0", marginBottom: 10 }}>{selectedMember.name} 출동 설정</div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ fontSize: 12, color: "#555", minWidth: 90 }}>사고 장소까지</span>
+                          <input type="number" value={accMin} onChange={e => setAccMin(e.target.value)} placeholder="분" style={{ width: 60, padding: "4px 8px", border: "1px solid #90CDF4", borderRadius: 6, fontSize: 13, textAlign: "center" }} />
+                          <span style={{ fontSize: 12, color: "#555" }}>분 소요</span>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ fontSize: 12, color: "#555", minWidth: 90 }}>병원까지</span>
+                          <input type="number" value={hospMin} onChange={e => setHospMin(e.target.value)} placeholder="분" style={{ width: 60, padding: "4px 8px", border: "1px solid #90CDF4", borderRadius: 6, fontSize: 13, textAlign: "center" }} />
+                          <span style={{ fontSize: 12, color: "#555" }}>분 소요</span>
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                        <button onClick={() => { setSelectedMember(null); setAccMin(""); setHospMin(""); }} style={{ flex: 1, padding: "8px", background: "#fff", border: "1px solid #ddd", borderRadius: 8, fontSize: 12, cursor: "pointer" }}>취소</button>
+                        <button onClick={handleDispatch} style={{ flex: 2, padding: "8px", background: "#2B6CB0", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 700, color: "#fff", cursor: "pointer" }}>출동 지시 확정</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 타임라인 */}
+                <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 12, padding: 14 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#111", marginBottom: 10 }}>진행 타임라인</div>
+                  {tlEvents.length === 0 ? (
+                    <div style={{ textAlign: "center", color: "#aaa", fontSize: 13 }}>아직 기록 없음</div>
+                  ) : (
+                    tlEvents.map((ev, i) => (
+                      <div key={i} style={{ display: "flex", gap: 10, marginBottom: 10, alignItems: "flex-start" }}>
+                        <div style={{ width: 8, height: 8, borderRadius: "50%", background: ev.color, flexShrink: 0, marginTop: 4 }} />
+                        <div>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: "#2B6CB0", marginRight: 6 }}>{ev.time}</span>
+                          <span style={{ fontSize: 12, color: "#111" }}>{ev.text}</span>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   if (screen === SCREENS.SITUATION_DETAIL && selectedAccident) {
     const acc = selectedAccident;
