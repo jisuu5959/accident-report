@@ -315,7 +315,7 @@ export default function App() {
 
   // ── Supabase Realtime — 상급자 새 사고 보고 수신 ──────
   useEffect(() => {
-    if (userRole !== "supervisor") return;
+    if (userRole !== "supervisor" && userRole !== "situation") return;
     const channel = supabase
       .channel("accident-reports-channel")
       .on(
@@ -2378,7 +2378,7 @@ export default function App() {
                 activeList.map(acc => (
                   <button
                     key={acc.id}
-                    onClick={() => go(SCREENS.SUPERVISOR)}
+                    onClick={() => go(SCREENS.TIMELINE)}
                     style={{
                       width: "100%", background: "#fff",
                       border: "1.5px solid #FED7D7", borderRadius: 12,
