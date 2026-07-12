@@ -2874,227 +2874,94 @@ export default function App() {
 
   // ── 화면 08-B: 보고 현황 타임라인 ────────────────────
   if (screen === SCREENS.TIMELINE) {
+    const loadTimeline = async () => {
+      const results = [];
+      // 사고 보고 불러오기
+      const { data: reports } = await supabase
+        .from("accident_reports")
+        .select("*")
+        .order("created_at", { ascending: true });
+      if (reports) {
+        reports.forEach(r => {
+          results.push({
+            time: new Date(r.created_at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" }),
+            text: "1차 보고 — " + r.accident_type + " / " + r.worker_name + " / " + r.location,
+            color: "#E24B4A",
+          });
+        });
+      }
+      // 상급자 지시 불러오기
+      const { data: dirs } = await supabase
+        .from("directives")
+        .select("*")
+        .order("sent_at", { ascending: true });
+      if (dirs) {
+        dirs.forEach(d => {
+          if (d.action_key === "응급조치_병원입력") return;
+          results.push({
+            time: new Date(d.sent_at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" }),
+            text: (d.action_key === "병원이름_입력완료" ? "병원 이름 입력 — " : "상급자 지시 — ") + d.action_label + (d.supervisor_name ? " (" + d.supervisor_name + ")" : ""),
+            color: d.action_key === "병원이름_입력완료" ? "#6B46C1" : "#2B6CB0",
+          });
+        });
+      }
+      // 출동 지시 불러오기
+      const { data: disps } = await supabase
+        .from("dispatches")
+        .select("*")
+        .order("dispatched_at", { ascending: true });
+      if (disps) {
+        disps.forEach(d => {
+          results.push({
+            time: new Date(d.dispatched_at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" }),
+            text: "출동 지시 — " + d.dispatcher_name + (d.accident_minutes ? " / 사고장소 " + d.accident_minutes + "분" : "") + (d.hospital_minutes ? " / 병원 " + d.hospital_minutes + "분" : ""),
+            color: "#276749",
+          });
+        });
+      }
+      // 시간순 정렬
+      results.sort((a, b) => a.time.localeCompare(b.time));
+      setTlEvents(results);
+    };
+
+    if (tlEvents.length <= 3) loadTimeline();
+
     return (
       <div style={styles.phone}><GlobalOverlay />
         <div style={styles.statusBar}><span>9:41</span><span>배터리</span></div>
         <div style={styles.header}>
-          <button style={styles.backBtn} onClick={goHome}>홈</button>
+          <button style={styles.backBtn} onClick={goHome}>‹</button>
           <span style={styles.headerTitle}>보고 현황</span>
-          <span />
+          <button
+            onClick={loadTimeline}
+            style={{ background: "none", border: "none", fontSize: 13, color: "#E53E3E", cursor: "pointer", fontWeight: 700 }}
+          >새로고침</button>
         </div>
         <div style={styles.body}>
-          <div style={{ textAlign: "center", color: "#888", fontSize: 13 }}>타임라인</div>
-        </div>
-      </div>
-    );
-  }
-
-  // ── 화면 09: 문자 알림 예시 ──────────────────────────
-  // ── 화면 SR: 상황실 — 전체 사고 목록 ────────────────
-  if (screen === SCREENS.SITUATION_ROOM) {
-    const MEMBERS = [
-      { id: "m1", role: "안전관리자", name: "이인판 차장", phone: "010-2345-6789" },
-      { id: "m2", role: "안전관리자", name: "박안전 과장", phone: "010-3456-1234" },
-      { id: "m3", role: "공사감독자", name: "김현당 팀장", phone: "010-1234-5678" },
-    ];
-
-    const loadSituationReports = async () => {
-      const { data } = await supabase
-        .from("accident_reports")
-        .select("*")
-        .order("created_at", { ascending: false });
-      if (data) setAccidentReports(data);
-    };
-
-    if (accidentReports.length === 0) loadSituationReports();
-
-    const nowHHMM = () => {
-      const d = new Date();
-
-      return String(d.getHours()).padStart(2,"0") + ":" + String(d.getMinutes()).padStart(2,"0");
-    };
-
-    const handleDispatch = async () => {
-      if (!selectedMember) return;
-      const time = nowHHMM();
-      const text = selectedMember.name + " 출동 지시" + (accMin ? " — 사고장소 " + accMin + "분" : "") + (hospMin ? " / 병원 " + hospMin + "분" : "");
-      setTlEvents(prev => [...prev, { time, text, color: "#185FA5" }]);
-      setDispatchedMembers(prev => ({ ...prev, [selectedMember.id]: true }));
-      setSelectedMember(null);
-      setAccMin("");
-      setHospMin("");
-      // Supabase에 저장 → 작업자/상급자 알람
-      await supabase.from("dispatches").insert({
-        accident_id: "2024-0625-001",
-        dispatcher_name: selectedMember.name,
-        dispatcher_role: selectedMember.role,
-        accident_minutes: accMin ? parseInt(accMin) : null,
-        hospital_minutes: hospMin ? parseInt(hospMin) : null,
-      });
-    };
-
-    return (
-      <div style={{ display: "flex", height: "100vh", fontFamily: "'Apple SD Gothic Neo', sans-serif", background: "#F7F8FC" }}>
-        <GlobalOverlay />
-
-        {/* 사이드바 */}
-        <div style={{ width: 200, background: "#1A365D", display: "flex", flexDirection: "column", flexShrink: 0 }}>
-          <div style={{ padding: "20px 16px", borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
-            <div style={{ fontSize: 15, fontWeight: 700, color: "#fff" }}>안전 상황실</div>
-            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.6)", marginTop: 3 }}>SK O&S 중대재해 대응</div>
-          </div>
-          {[
-            { label: "사고 현황", active: true },
-            { label: "직원 관리", active: false },
-            { label: "사고 이력", active: false },
-            { label: "비상 연락망", active: false },
-            { label: "보고서 출력", active: false },
-            { label: "설정", active: false },
-          ].map(item => (
-            <div key={item.label} style={{
-              padding: "10px 16px", fontSize: 13, cursor: "pointer",
-              background: item.active ? "rgba(255,255,255,0.15)" : "none",
-              color: item.active ? "#fff" : "rgba(255,255,255,0.6)",
-            }}>{item.label}</div>
-          ))}
-          <div style={{ marginTop: "auto", padding: "16px" }}>
-            <button onClick={() => go(SCREENS.LOGIN)} style={{
-              width: "100%", padding: "8px", background: "rgba(255,255,255,0.1)",
-              border: "1px solid rgba(255,255,255,0.2)", borderRadius: 8,
-              color: "#fff", fontSize: 12, cursor: "pointer",
-            }}>로그아웃</button>
-          </div>
-        </div>
-
-        {/* 메인 */}
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-          {/* 상단바 */}
-          <div style={{ padding: "12px 20px", background: "#fff", borderBottom: "1px solid #E2E8F0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div style={{ fontSize: 15, fontWeight: 700, color: "#111" }}>실시간 사고 현황</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <button onClick={loadSituationReports} style={{ fontSize: 12, padding: "4px 12px", cursor: "pointer" }}>새로고침</button>
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#38A169" }} />
-                <span style={{ fontSize: 12, color: "#888" }}>실시간 연결</span>
-              </div>
-              <span style={{ fontSize: 12, color: "#aaa" }}>{new Date().toLocaleDateString("ko-KR")}</span>
+          {tlEvents.length === 0 ? (
+            <div style={{ textAlign: "center", color: "#aaa", fontSize: 13, padding: "40px 0" }}>
+              아직 기록된 내용이 없습니다.
             </div>
-          </div>
-
-          {/* 컨텐츠 */}
-          <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-            {/* 사고 목록 */}
-            <div style={{ width: 260, background: "#fff", borderRight: "1px solid #E2E8F0", overflowY: "auto", flexShrink: 0 }}>
-              <div style={{ padding: "10px 14px", borderBottom: "1px solid #E2E8F0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ fontWeight: 700, fontSize: 13, color: "#111" }}>사고 목록</span>
-                <span style={{ background: "#FFF5F5", color: "#C53030", fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 20, border: "1px solid #FED7D7" }}>진행중 1</span>
-              </div>
-              {accidentReports.length === 0 ? (
-                <div style={{ padding: "20px 14px", fontSize: 13, color: "#aaa", textAlign: "center" }}>사고 없음</div>
-              ) : (
-                accidentReports.map(acc => (
-                  <div key={acc.id} onClick={() => setSelectedAccident(acc)} style={{
-                    padding: "12px 14px", borderBottom: "1px solid #E2E8F0", cursor: "pointer",
-                    background: selectedAccident?.id === acc.id ? "#EBF8FF" : "#fff",
-                  }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                      <span style={{ fontWeight: 700, fontSize: 13, color: "#111" }}>{acc.accident_type} 사고</span>
-                      <span style={{ background: "#FFF5F5", color: "#C53030", fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 20, border: "1px solid #FED7D7" }}>진행중</span>
-                    </div>
-                    <div style={{ fontSize: 11, color: "#888", lineHeight: 1.6 }}>
-                      {acc.worker_name} · {acc.work_type}<br />
-                      {acc.location}
+          ) : (
+            <div style={{ position: "relative" }}>
+              <div style={{ position: "absolute", left: 13, top: 14, bottom: 14, width: 2, background: "#E2E8F0", zIndex: 0 }} />
+              {tlEvents.map((ev, i) => (
+                <div key={i} style={{ display: "flex", gap: 12, marginBottom: 14, position: "relative", zIndex: 1 }}>
+                  <div style={{
+                    width: 28, height: 28, borderRadius: "50%", flexShrink: 0,
+                    background: ev.color, display: "flex", alignItems: "center",
+                    justifyContent: "center", fontSize: 12, color: "#fff", fontWeight: 700,
+                  }}>✓</div>
+                  <div style={{ flex: 1, background: "#fff", border: "1px solid #E2E8F0", borderRadius: 8, padding: "8px 12px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: "#111" }}>{ev.text}</span>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: ev.color, background: ev.color + "18", borderRadius: 4, padding: "1px 6px" }}>{ev.time}</span>
                     </div>
                   </div>
-                ))
-              )}
+                </div>
+              ))}
             </div>
-
-            {/* 상세 패널 */}
-            <div style={{ flex: 1, overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
-
-              {/* 출동 지정 */}
-              <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 12, padding: 14 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: "#111", marginBottom: 10 }}>출동 지정</div>
-
-                <div style={{ fontSize: 11, color: "#888", fontWeight: 700, marginBottom: 6 }}>안전관리자</div>
-                {MEMBERS.filter(m => m.role === "안전관리자").map(m => (
-                  <div key={m.id} onClick={() => !dispatchedMembers[m.id] && setSelectedMember(m)} style={{
-                    display: "flex", alignItems: "center", justifyContent: "space-between",
-                    padding: "8px 10px", borderRadius: 8, cursor: dispatchedMembers[m.id] ? "default" : "pointer",
-                    border: "1px solid " + (selectedMember?.id === m.id ? "#2B6CB0" : dispatchedMembers[m.id] ? "#9AE6B4" : "#E2E8F0"),
-                    background: selectedMember?.id === m.id ? "#EBF8FF" : dispatchedMembers[m.id] ? "#F0FFF4" : "#fff",
-                    marginBottom: 6,
-                  }}>
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: "#111" }}>{m.name}</div>
-                      <div style={{ fontSize: 11, color: "#888" }}>{m.role} · {m.phone}</div>
-                    </div>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: dispatchedMembers[m.id] ? "#276749" : selectedMember?.id === m.id ? "#2B6CB0" : "#aaa" }}>
-                      {dispatchedMembers[m.id] ? "✓ 출동중" : selectedMember?.id === m.id ? "선택됨" : "클릭하여 선택"}
-                    </span>
-                  </div>
-                ))}
-
-                <div style={{ fontSize: 11, color: "#888", fontWeight: 700, margin: "10px 0 6px" }}>공사감독자</div>
-                {MEMBERS.filter(m => m.role === "공사감독자").map(m => (
-                  <div key={m.id} onClick={() => !dispatchedMembers[m.id] && setSelectedMember(m)} style={{
-                    display: "flex", alignItems: "center", justifyContent: "space-between",
-                    padding: "8px 10px", borderRadius: 8, cursor: dispatchedMembers[m.id] ? "default" : "pointer",
-                    border: "1px solid " + (selectedMember?.id === m.id ? "#2B6CB0" : dispatchedMembers[m.id] ? "#9AE6B4" : "#E2E8F0"),
-                    background: selectedMember?.id === m.id ? "#EBF8FF" : dispatchedMembers[m.id] ? "#F0FFF4" : "#fff",
-                    marginBottom: 6,
-                  }}>
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: "#111" }}>{m.name}</div>
-                      <div style={{ fontSize: 11, color: "#888" }}>{m.role} · {m.phone}</div>
-                    </div>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: dispatchedMembers[m.id] ? "#276749" : selectedMember?.id === m.id ? "#2B6CB0" : "#aaa" }}>
-                      {dispatchedMembers[m.id] ? "✓ 출동중" : selectedMember?.id === m.id ? "선택됨" : "클릭하여 선택"}
-                    </span>
-                  </div>
-                ))}
-
-                {/* 소요시간 입력 */}
-                {selectedMember && (
-                  <div style={{ marginTop: 10, padding: 12, background: "#EBF8FF", borderRadius: 8, border: "1px solid #90CDF4" }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: "#2B6CB0", marginBottom: 10 }}>{selectedMember.name} 출동 설정</div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span style={{ fontSize: 12, color: "#555", minWidth: 90 }}>사고 장소까지</span>
-                        <input type="number" value={accMin} onChange={e => setAccMin(e.target.value)} placeholder="분" style={{ width: 60, padding: "4px 8px", border: "1px solid #90CDF4", borderRadius: 6, fontSize: 13, textAlign: "center" }} />
-                        <span style={{ fontSize: 12, color: "#555" }}>분 소요</span>
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span style={{ fontSize: 12, color: "#555", minWidth: 90 }}>병원까지</span>
-                        <input type="number" value={hospMin} onChange={e => setHospMin(e.target.value)} placeholder="분" style={{ width: 60, padding: "4px 8px", border: "1px solid #90CDF4", borderRadius: 6, fontSize: 13, textAlign: "center" }} />
-                        <span style={{ fontSize: 12, color: "#555" }}>분 소요</span>
-                      </div>
-                    </div>
-                    <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-                      <button onClick={() => { setSelectedMember(null); setAccMin(""); setHospMin(""); }} style={{ flex: 1, padding: "8px", background: "#fff", border: "1px solid #ddd", borderRadius: 8, fontSize: 12, cursor: "pointer" }}>취소</button>
-                      <button onClick={handleDispatch} style={{ flex: 2, padding: "8px", background: "#2B6CB0", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 700, color: "#fff", cursor: "pointer" }}>출동 지시 확정</button>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* 타임라인 */}
-              <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 12, padding: 14 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: "#111", marginBottom: 10 }}>진행 타임라인</div>
-                {tlEvents.map((ev, i) => (
-                  <div key={i} style={{ display: "flex", gap: 10, marginBottom: 10, alignItems: "flex-start" }}>
-                    <div style={{ width: 8, height: 8, borderRadius: "50%", background: ev.color, flexShrink: 0, marginTop: 4 }} />
-                    <div>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: "#2B6CB0", marginRight: 6 }}>{ev.time}</span>
-                      <span style={{ fontSize: 12, color: "#111" }}>{ev.text}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-            </div>
-          </div>
+          )}
         </div>
       </div>
     );
