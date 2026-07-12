@@ -2973,7 +2973,6 @@ export default function App() {
             <div style={{ fontSize: 15, fontWeight: 700, color: "#111" }}>실시간 사고 현황</div>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <button onClick={loadSituationReports} style={{ fontSize: 12, padding: "4px 12px", cursor: "pointer" }}>새로고침</button>
-              <button onClick={loadSituationReports} style={{ fontSize: 12, padding: "4px 12px", cursor: "pointer" }}>새로고침</button>
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#38A169" }} />
                 <span style={{ fontSize: 12, color: "#888" }}>실시간 연결</span>
