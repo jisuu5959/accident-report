@@ -2897,6 +2897,17 @@ export default function App() {
       { id: "m2", role: "안전관리자", name: "박안전 과장", phone: "010-3456-1234" },
       { id: "m3", role: "공사감독자", name: "김현당 팀장", phone: "010-1234-5678" },
     ];
+
+    const loadSituationReports = async () => {
+      const { data } = await supabase
+        .from("accident_reports")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (data) setAccidentReports(data);
+    };
+
+    if (accidentReports.length === 0) loadSituationReports();
+
     const nowHHMM = () => {
       const d = new Date();
 
@@ -2961,6 +2972,8 @@ export default function App() {
           <div style={{ padding: "12px 20px", background: "#fff", borderBottom: "1px solid #E2E8F0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div style={{ fontSize: 15, fontWeight: 700, color: "#111" }}>실시간 사고 현황</div>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <button onClick={loadSituationReports} style={{ fontSize: 12, padding: "4px 12px", cursor: "pointer" }}>새로고침</button>
+              <button onClick={loadSituationReports} style={{ fontSize: 12, padding: "4px 12px", cursor: "pointer" }}>새로고침</button>
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#38A169" }} />
                 <span style={{ fontSize: 12, color: "#888" }}>실시간 연결</span>
