@@ -44,6 +44,14 @@ const RECIPIENTS_BY_TYPE = {
     { tier: "상황실", name: "안전상황실", phone: "02-123-4567" },
   ],
 };
+// ── 상급자 지시(action_key)별 작업자 긴급 조치 체크리스트 ──
+// 알림 팝업과 '긴급 조치 현황 입력' 화면이 이 설정을 함께 사용해서 항상 같은 항목을 보여준다.
+const DIRECTIVE_CHECKLIST = {
+  "재지시대피": { itemKey: "stop",      icon: "🚫", title: "작업 중지", question: "현장 모든 작업을 즉시 중지했습니까?", color: "#C53030", subItems: ["작업 중지", "장비 가동 중단", "작업자 대피 완료"] },
+  "병원이송":   { itemKey: "report119", icon: "🚑", title: "119 신고", question: "119에 신고 및 연락했습니까?", color: "#2B6CB0", subItems: ["119 신고 완료", "응급조치 완료"] },
+  "현장보존":   { itemKey: "control",   icon: "🚧", title: "현장 통제", question: "사고 구역 출입을 통제했습니까?", color: "#B7791F", subItems: ["외부인 접근 차단"] },
+};
+
 const acidentTypes = [
   { id: "fall", label: "추락", icon: "🧗" },
   { id: "electric", label: "감전", icon: "⚡" },
@@ -87,43 +95,23 @@ const smsMessages = [
 ];
 
 // ── 보고 완료 화면 컴포넌트 ─────────────────────────
-function CompleteScreen({ go }) {
+function CompleteScreen({ go, GlobalOverlay }) {
   return (
     <div style={{
       width: "100%", maxWidth: 375, minHeight: "100vh",
       background: "#fff", display: "flex", flexDirection: "column",
       fontFamily: "'Apple SD Gothic Neo', sans-serif",
+      position: "relative",
     }}>
-      <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 16px 4px", fontSize: 12, fontWeight: 700 }}>
-        <span>9:41</span><span>📶 </span>
-      </div>
+      {GlobalOverlay && GlobalOverlay()}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "32px 24px" }}>
         <div style={{
           width: 80, height: 80, borderRadius: "50%", background: "#E53E3E",
           display: "flex", alignItems: "center", justifyContent: "center",
           fontSize: 36, color: "#fff", marginBottom: 20,
         }}>✓</div>
-        <div style={{ fontSize: 22, fontWeight: 800, color: "#111", marginBottom: 8, textAlign: "center" }}>
-          1차 보고가 완료되었습니다.
-        </div>
         <div style={{ fontSize: 14, color: "#666", textAlign: "center", lineHeight: 1.6, marginBottom: 32 }}>
           보고 내용이 등록되었으며,<br />지정된 대상자에게 전송되었습니다.
-        </div>
-        <div style={{
-          width: "100%", background: "#FFF5F5", border: "1px solid #FED7D7",
-          borderRadius: 12, padding: "16px", marginBottom: 24,
-          display: "flex", gap: 10, alignItems: "flex-start",
-        }}>
-          <span style={{ fontSize: 18, flexShrink: 0 }}>⏳</span>
-          <div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: "#C53030", marginBottom: 4 }}>
-              상급자 조치 지시를 기다려주세요
-            </div>
-            <div style={{ fontSize: 12, color: "#744210", lineHeight: 1.6 }}>
-              상급자가 조치 지시를 하면 알림이 옵니다.<br />
-              알림을 확인하고 조치에 따라 대응해주세요.
-            </div>
-          </div>
         </div>
         <button
           onClick={() => go(SCREENS.WORKER_TIMELINE)}
@@ -133,14 +121,6 @@ function CompleteScreen({ go }) {
             fontWeight: 700, color: "#fff", cursor: "pointer", marginBottom: 10,
           }}
         > 보고 현황 보기</button>
-        <button
-          onClick={() => go(SCREENS.SUPERVISOR_DASHBOARD)}
-          style={{
-            width: "100%", padding: "13px", background: "#fff",
-            border: "1.5px solid #ddd", borderRadius: 10, fontSize: 14,
-            fontWeight: 600, color: "#666", cursor: "pointer",
-          }}
-        >사고 현황 보기</button>
       </div>
     </div>
   );
@@ -150,6 +130,12 @@ export default function App() {
   const [screen, setScreen] = useState(SCREENS.LOGIN);
   const [userRole, setUserRole] = useState(null);
   const [workType, setWorkType] = useState(null);
+  const [currentUser, setCurrentUser] = useState(null); // 로그인한 사용자 정보 (이름, 소속팀 등)
+  const [currentAccidentId, setCurrentAccidentId] = useState(null); // 현재(내가 보고한) 사고의 실제 DB id
+  const [reportedAt, setReportedAt] = useState(null); // 1차 보고 접수 시각
+  const [tlLoadedFor, setTlLoadedFor] = useState(undefined); // 진행 타임라인을 마지막으로 불러온 사고 id
+  const [directiveStatus, setDirectiveStatus] = useState({}); // 3대 체크리스트(재지시대피/현장보존/병원이송) DB 기준 전송·확인 상태
+  const [staffTeamMap, setStaffTeamMap] = useState({}); // 작업자 이름 → 소속팀 (accident_reports에는 team 컬럼이 없어 users 테이블에서 조회)
 
   // ── 로그인 state ──────────────────────────────────────
   const [loginStep, setLoginStep] = useState("phone");   // "phone" | "verify"
@@ -175,6 +161,7 @@ export default function App() {
   const [hasInjured, setHasInjured] = useState(true);
   const [injuredName, setInjuredName] = useState("");
   const [uploadedPhotos, setUploadedPhotos] = useState([]);
+  const [lightboxUrl, setLightboxUrl] = useState(null); // 사진 확대보기
   const [photoError, setPhotoError] = useState(false);
   const [checkedRecipients, setCheckedRecipients] = useState([]);
   const [actionStatus, setActionStatus] = useState({
@@ -217,13 +204,10 @@ export default function App() {
   const [dispatchedMembers, setDispatchedMembers] = useState({});
   const [staffList, setStaffList] = useState([]);
   const [showAddStaff, setShowAddStaff] = useState(false);
-  const [newStaff, setNewStaff] = useState({ name: "", phone: "", role: "worker", team: "", position: "", work_type: "유지보수" });
+  const [editingStaffId, setEditingStaffId] = useState(null); // null=신규추가, 값 있으면 해당 직원 수정 모드
+  const [newStaff, setNewStaff] = useState({ name: "", phone: "", role: "worker", team: "", work_type: "유지보수" });
   const [situationTab, setSituationTab] = useState("사고 현황");
-    const [tlEvents, setTlEvents] = useState([
-    { time: "14:35", text: "사고 발생", color: "#E24B4A" },
-    { time: "14:36", text: "1차 보고 접수", color: "#E24B4A" },
-    { time: "14:37", text: "작업중지 재지시 + 대피 요청", color: "#BA7517" },
-  ]);
+    const [tlEvents, setTlEvents] = useState([]);
   const [emergencyTab, setEmergencyTab] = useState("유지보수");
   const [emergencySearch, setEmergencySearch] = useState("");
   const [emergencyUsers, setEmergencyUsers] = useState([]);
@@ -244,9 +228,7 @@ export default function App() {
   const [showMockAlert, setShowMockAlert] = useState(false);
   const [isMock, setIsMock] = useState(false);
   const [mockCheck, setMockCheck] = useState({ stop: false, call119: false });
-  const [showHospitalInput, setShowHospitalInput] = useState(false);
-  const [hospitalName, setHospitalName] = useState("");
-  const [hospitalSubmitted, setHospitalSubmitted] = useState(false);
+  const [hospitalName, setHospitalName] = useState(""); // 이송 병원 이름 — 보고현황 화면에서 언제든 입력/수정
 
   const go = (s) => setScreen(s);
   const goHome = () => {
@@ -266,12 +248,6 @@ export default function App() {
         (payload) => {
           const directive = payload.new;
 
-          // 응급조치 병원 입력 요청
-          if (directive.action_key === "응급조치_병원입력") {
-            setShowHospitalInput(true);
-            return;
-          }
-
           if (directive.action_key === "병원이름_입력완료") {
             const hospNotif = {
               id: directive.id,
@@ -290,14 +266,20 @@ export default function App() {
           if (directive.action_key === "상황종료") {
             const closeNotif = {
               id: directive.id,
-              title: "상황 종료",
-              body: "모든 조치가 완료되었습니다. 상황이 종료됩니다.",
-              message: "모든 조치가 완료되었습니다.",
+              title: "중대재해 대응 상황 종료 안내",
+              body: "본 사고에 대한 모든 조치가 완료되어 상황을 종료합니다. 안전한 대응에 협조해 주셔서 감사합니다.",
+              message: "본 사고에 대한 모든 조치가 완료되어 상황을 종료합니다. 안전한 대응에 협조해 주셔서 감사합니다.",
               actionLabel: "상황 종료",
               supervisorName: "안전 상황실",
               sentAt: directive.sent_at,
+              isClose: true,
             };
             setActiveNotif(closeNotif);
+            // 몇 초 뒤 자동으로 홈 화면으로 이동 (직접 '확인'을 눌러도 바로 이동)
+            setTimeout(() => {
+              setActiveNotif(prev => (prev && prev.id === closeNotif.id ? null : prev));
+              goHome();
+            }, 4000);
             return;
           }
 
@@ -307,6 +289,7 @@ export default function App() {
             body: `${directive.supervisor_name}이(가) '${directive.action_label}' 지시를 전송했습니다.`,
             message: directive.message,
             actionLabel: directive.action_label,
+            actionKey: directive.action_key,
             supervisorName: directive.supervisor_name,
             sentAt: directive.sent_at,
           };
@@ -340,11 +323,44 @@ export default function App() {
           setNotifBanner(newNotif);
           setNotifications(prev => [newNotif, ...prev]);
           setTimeout(() => setNotifBanner(null), 5000);
+          // 타임라인 캐시 무효화 — 다음에 볼 때 이 출동 지시가 반영되도록
+          setTlLoadedFor((prev) => (prev === d.accident_id ? null : prev));
         }
       )
       .subscribe();
     return () => supabase.removeChannel(channel);
   }, []);
+
+  // ── Supabase Realtime — 병원 이송 정보 입력(작업자→상급자) 실시간 수신 ──
+  // 작업자가 병원 이름을 입력하면 상급자 화면에 알람 배너를 띄우고 타임라인도 자동 반영
+  useEffect(() => {
+    if (userRole !== "supervisor" && userRole !== "situation") return;
+    const channel = supabase
+      .channel("hospital-info-channel")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "directives" },
+        (payload) => {
+          const d = payload.new;
+          if (d.action_key !== "병원이름_입력완료") return;
+          const hospNotif = {
+            id: d.id,
+            title: "🏥 병원 이송 정보 접수",
+            body: d.message,
+            message: d.message,
+            actionLabel: "병원 이송 정보",
+            supervisorName: "현장 작업자",
+            sentAt: d.sent_at,
+          };
+          setNotifBanner(hospNotif);
+          setTimeout(() => setNotifBanner(null), 6000);
+          // 지금 보고 있는 타임라인이 이 사고 건이면 캐시를 무효화해서 자동으로 다시 불러오게 함
+          setTlLoadedFor((prev) => (prev === d.accident_id ? null : prev));
+        }
+      )
+      .subscribe();
+    return () => supabase.removeChannel(channel);
+  }, [userRole]);
 
   // ── Supabase Realtime — 상급자 새 사고 보고 수신 ──────
   useEffect(() => {
@@ -375,7 +391,200 @@ export default function App() {
     return () => supabase.removeChannel(channel);
   }, [userRole]);
 
+  // ── Supabase Realtime — 작업자의 지시 확인(알람 팝업 확인) 실시간 수신 ──
+  // 작업자가 알람을 확인하면 상급자/작업자 화면 모두 같은 타임라인이 즉시 갱신되도록 한다.
+  useEffect(() => {
+    const channel = supabase
+      .channel("directives-confirm-channel")
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "directives" },
+        (payload) => {
+          const d = payload.new;
+          if (!d.confirmed_at) return;
+          // 현재 보고 있는 타임라인 캐시를 무효화해서 다시 불러오게 함
+          setTlLoadedFor((prev) => (prev === d.accident_id ? null : prev));
+          if (userRole === "supervisor" || userRole === "situation") {
+            const confirmNotif = {
+              id: `confirm-${d.id}-${d.confirmed_at}`,
+              title: "✓ 작업자 확인 완료",
+              body: `현장 작업자가 '${d.action_label}' 지시를 확인했습니다.`,
+              message: `'${d.action_label}' 지시를 현장 작업자가 확인했습니다.`,
+              actionLabel: d.action_label,
+              supervisorName: "현장 작업자",
+              sentAt: d.confirmed_at,
+            };
+            setNotifBanner(confirmNotif);
+            setTimeout(() => setNotifBanner(null), 5000);
+          }
+        }
+      )
+      .subscribe();
+    return () => supabase.removeChannel(channel);
+  }, [userRole]);
+
+  // ── Supabase Realtime — 사고 상태 변경(상황종료 등) 실시간 반영 ──
+  // 상황실에서 상황종료 처리하면 상급자 대시보드도 새로고침 없이 자동으로 "완료"로 바뀌도록 한다.
+  useEffect(() => {
+    if (userRole !== "supervisor" && userRole !== "situation") return;
+    const channel = supabase
+      .channel("accident-status-channel")
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "accident_reports" },
+        (payload) => {
+          const updated = payload.new;
+          setAccidentReports(prev => prev.map(a => a.id === updated.id ? { ...a, ...updated } : a));
+          setSelectedAccident(prev => (prev && prev.id === updated.id) ? { ...prev, ...updated } : prev);
+        }
+      )
+      .subscribe();
+    return () => supabase.removeChannel(channel);
+  }, [userRole]);
+
+  // ── Supabase Realtime — 직원 관리(users) 실시간 반영 ──
+  // 직원 추가/수정/삭제(비활성화)가 새로고침 없이도 상황실 화면에 바로 반영되도록 한다.
+  useEffect(() => {
+    if (userRole !== "situation") return;
+    const channel = supabase
+      .channel("staff-channel")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "users" },
+        () => {
+          // insert/update/delete 어떤 경우든 목록과 팀 매핑을 다시 불러와 최신 상태 유지
+          supabase.from("users").select("*").order("role", { ascending: true })
+            .then(({ data }) => { if (data) setStaffList(data); });
+          supabase.from("users").select("name, team")
+            .then(({ data }) => {
+              if (data) {
+                const map = {};
+                data.forEach(u => { if (u.name) map[u.name] = u.team; });
+                setStaffTeamMap(map);
+              }
+            });
+        }
+      )
+      .subscribe();
+    return () => supabase.removeChannel(channel);
+  }, [userRole]);
+
   const currentRecipients = RECIPIENTS_BY_TYPE[workType] || RECIPIENTS_BY_TYPE["유지보수"];
+
+  // ── 작업자/상급자가 동일하게 보는 공용 타임라인 조회 ──────
+  // accident_reports / directives / dispatches를 실제 사고 id로 필터링해서
+  // 작업자 화면과 상급자 화면이 항상 같은 내용을 보도록 한다.
+  // 작업자 이름 → 소속팀 매핑 (accident_reports에는 team 컬럼이 없어 users 테이블에서 가져와 화면에서 합쳐 보여준다)
+  const loadStaffTeamMap = async () => {
+    const { data } = await supabase.from("users").select("name, team");
+    if (data) {
+      const map = {};
+      data.forEach(u => { if (u.name) map[u.name] = u.team; });
+      setStaffTeamMap(map);
+    }
+  };
+
+  // 긴급조치 체크리스트(작업중지/119신고/현장통제) 세부항목 체크를 DB에 기록 — directives 테이블을 재사용
+  // action_key를 "checklist_항목키_순번" 형태로 저장해서 타임라인에서 구분해 표시한다.
+  const toggleChecklistItem = async (accId, itemKey, subIndex, label, willCheck) => {
+    const id = `${itemKey}-${subIndex}`;
+    const now = new Date();
+    const hhmm = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
+    setSubItemChecked(prev => ({ ...prev, [id]: willCheck }));
+    setSubItemTimes(prev => ({ ...prev, [id]: willCheck ? hhmm : null }));
+    if (!accId) return;
+    const actionKey = `checklist_${itemKey}_${subIndex}`;
+    // 이전 기록 제거 후, 체크하는 경우에만 새로 기록 (재체크/해제 토글을 그대로 반영)
+    await supabase.from("directives").delete().eq("accident_id", accId).eq("action_key", actionKey);
+    if (willCheck) {
+      await supabase.from("directives").insert({
+        accident_id: accId,
+        action_key: actionKey,
+        action_label: label,
+        message: "현장 작업자 확인 완료",
+        supervisor_name: currentUser?.name || "현장 작업자",
+      });
+    }
+    loadSharedTimeline(accId);
+  };
+
+  const loadSharedTimeline = async (accId) => {
+    if (!accId) { setTlEvents([]); setTlLoadedFor(accId); return; }
+    const results = [];
+
+    const { data: reports } = await supabase
+      .from("accident_reports").select("*").eq("id", accId);
+    if (reports) reports.forEach(r => results.push({
+      time: new Date(r.created_at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" }),
+      text: `🚨 1차 보고 접수 — ${r.accident_type} / ${r.worker_name}${r.team ? " (" + r.team + ")" : ""}`,
+      color: "#E24B4A",
+    }));
+
+    const { data: dirs } = await supabase
+      .from("directives").select("*").eq("accident_id", accId).order("sent_at", { ascending: true });
+    const checklistState = {}; // DB에 저장된 긴급조치 체크 상태 — 화면 표시용으로 동기화
+    if (dirs) dirs.forEach(d => {
+      if (d.action_key === "응급조치_병원입력") return; // 작업자 팝업 트리거용 — 타임라인에는 비노출
+      if (d.action_key.startsWith("checklist_")) {
+        // 긴급조치 체크리스트(작업중지/119신고/현장통제) 세부항목 체크 기록
+        const rest = d.action_key.slice("checklist_".length);
+        const lastDash = rest.lastIndexOf("_");
+        const itemKey = rest.slice(0, lastDash);
+        const subIndex = rest.slice(lastDash + 1);
+        checklistState[`${itemKey}-${subIndex}`] = new Date(d.sent_at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
+        results.push({
+          time: new Date(d.sent_at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" }),
+          text: `✅ 조치 확인 — ${d.action_label}`,
+          color: "#276749",
+        });
+        return;
+      }
+      const text = d.action_key === "병원이름_입력완료"
+        ? `🏥 ${d.message || "병원 이송 정보 입력"}` // 작업자가 실제 입력한 "이송 병원: OOO" 그대로 표시
+        : d.action_key === "상황종료"
+        ? `✅ 상황 종료`
+        : `📨 상급자 지시 — ${d.action_label}${d.supervisor_name ? ` (${d.supervisor_name})` : ""}`;
+      const color = d.action_key === "병원이름_입력완료" ? "#6B46C1"
+        : d.action_key === "상황종료" ? "#38A169" : "#2B6CB0";
+      results.push({
+        time: new Date(d.sent_at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" }),
+        text, color,
+      });
+      // 작업자가 알람 팝업을 확인하면 그 확인 기록도 같은 타임라인에 이벤트로 추가
+      if (d.confirmed_at) {
+        results.push({
+          time: new Date(d.confirmed_at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" }),
+          text: `✓ 작업자 확인 완료 — ${d.action_label}`,
+          color: "#276749",
+        });
+      }
+    });
+    // 긴급조치 체크리스트 체크박스 상태를 DB 기준으로 동기화 (다른 세션/새로고침에도 항상 일치)
+    setSubItemChecked(checklistState ? Object.fromEntries(Object.keys(checklistState).map(k => [k, true])) : {});
+    setSubItemTimes(checklistState);
+
+    // 3대 체크리스트(재지시대피/현장보존/병원이송) — 작업자·상급자 화면이 동일하게 참조하는 DB 기준 상태
+    const CHECKLIST_KEYS = ["재지시대피", "현장보존", "병원이송"];
+    const statusMap = {};
+    (dirs || []).forEach(d => {
+      if (CHECKLIST_KEYS.includes(d.action_key)) {
+        statusMap[d.action_key] = { sentAt: d.sent_at, confirmedAt: d.confirmed_at || null };
+      }
+    });
+    setDirectiveStatus(statusMap);
+
+    const { data: disps } = await supabase
+      .from("dispatches").select("*").eq("accident_id", accId).order("dispatched_at", { ascending: true });
+    if (disps) disps.forEach(d => results.push({
+      time: new Date(d.dispatched_at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" }),
+      text: `🚑 출동 지시 — ${d.dispatcher_name}${d.accident_minutes ? ` / 사고장소 ${d.accident_minutes}분` : ""}${d.hospital_minutes ? ` / 병원 ${d.hospital_minutes}분` : ""}`,
+      color: "#185FA5",
+    }));
+
+    results.sort((a, b) => a.time.localeCompare(b.time));
+    setTlEvents(results);
+    setTlLoadedFor(accId);
+  };
 
   const styles = {
     phone: {
@@ -492,6 +701,37 @@ export default function App() {
   ) : null;
 
   const NotifPopup = () => activeNotif ? (
+    activeNotif.isClose ? (
+      // ── 상황 종료 안내 — 차분한 전용 디자인, 확인 버튼 하나만 ──
+      <div style={{
+        position: "fixed", top: 0, left: "50%", transform: "translateX(-50%)",
+        width: 375, height: "100%", zIndex: 9998,
+        background: "rgba(0,0,0,0.55)",
+        display: "flex", alignItems: "center", justifyContent: "center", padding: "20px",
+      }}>
+        <div style={{
+          background: "#fff", borderRadius: 18, padding: "28px 22px", width: "100%",
+          boxShadow: "0 8px 32px rgba(0,0,0,0.2)", textAlign: "center",
+        }}>
+          <div style={{
+            width: 56, height: 56, borderRadius: "50%", background: "#F0FFF4",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 28, margin: "0 auto 16px",
+          }}>✅</div>
+          <div style={{ fontSize: 17, fontWeight: 800, color: "#111", marginBottom: 10 }}>
+            {activeNotif.title}
+          </div>
+          <div style={{ fontSize: 13, color: "#555", lineHeight: 1.7, marginBottom: 22 }}>
+            {activeNotif.body}
+          </div>
+          <button onClick={() => { setActiveNotif(null); goHome(); }} style={{
+            width: "100%", padding: "13px", background: "#276749",
+            border: "none", borderRadius: 10,
+            fontSize: 14, fontWeight: 700, cursor: "pointer", color: "#fff",
+          }}>확인</button>
+        </div>
+      </div>
+    ) : (
     <div style={{
       position: "fixed", top: 0, left: "50%", transform: "translateX(-50%)",
       width: 375, height: "100%", zIndex: 9998,
@@ -534,14 +774,45 @@ export default function App() {
           </div>
         </div>
 
-        {/* 자동 전송 안내 */}
-        <div style={{
-          background: "#F0FFF4", border: "1px solid #9AE6B4",
-          borderRadius: 8, padding: "10px 12px", marginBottom: 14,
-          fontSize: 12, color: "#276749", lineHeight: 1.5,
-        }}>
-          ✅ 확인 완료 시 상급자에게 자동으로 알림이 전송됩니다.
-        </div>
+        {/* 지시에 해당하는 조치 체크리스트 — 바로 이 화면에서 체크 */}
+        {DIRECTIVE_CHECKLIST[activeNotif.actionKey] && (
+          <div style={{
+            border: "1.5px solid #E2E8F0", borderRadius: 10,
+            padding: "12px 14px", marginBottom: 14,
+          }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#111", marginBottom: 8 }}>
+              {DIRECTIVE_CHECKLIST[activeNotif.actionKey].icon} {DIRECTIVE_CHECKLIST[activeNotif.actionKey].question}
+            </div>
+            {DIRECTIVE_CHECKLIST[activeNotif.actionKey].subItems.map((sub, si) => {
+              const cfg = DIRECTIVE_CHECKLIST[activeNotif.actionKey];
+              const id = `${cfg.itemKey}-${si}`;
+              const checked = !!subItemChecked[id];
+              return (
+                <button
+                  key={si}
+                  onClick={() => {
+                    const accForChecklist = selectedAccident?.id || currentAccidentId;
+                    toggleChecklistItem(accForChecklist, cfg.itemKey, si, sub, !checked);
+                  }}
+                  style={{
+                    width: "100%", display: "flex", alignItems: "center", gap: 9,
+                    padding: "7px 2px", background: "none", border: "none", cursor: "pointer", textAlign: "left",
+                  }}
+                >
+                  <div style={{
+                    width: 20, height: 20, borderRadius: 5, flexShrink: 0,
+                    background: checked ? cfg.color : "#fff",
+                    border: `1.5px solid ${checked ? cfg.color : "#CBD5E0"}`,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                  }}>
+                    {checked && <span style={{ color: "#fff", fontSize: 12, fontWeight: 800 }}>✓</span>}
+                  </div>
+                  <span style={{ fontSize: 13.5, color: checked ? "#222" : "#555", fontWeight: checked ? 600 : 400 }}>{sub}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* 버튼 */}
         <div style={{ display: "flex", gap: 10 }}>
@@ -562,6 +833,9 @@ export default function App() {
               n.id === activeNotif.id ? { ...n, confirmedAt: hhmm } : n
             ));
             setActiveNotif(null);
+            // 상급자/작업자 화면이 같은 타임라인을 보도록 즉시 갱신
+            const accForReload = selectedAccident?.id || currentAccidentId;
+            if (accForReload) loadSharedTimeline(accForReload);
           }} style={{
             flex: 2, padding: "13px", background: "#E53E3E",
             border: "none", borderRadius: 10,
@@ -570,97 +844,34 @@ export default function App() {
         </div>
       </div>
     </div>
+    )
   ) : null;
 
-  const HospitalInputPopup = () => showHospitalInput ? (
-    <div style={{
-      position: "fixed", top: 0, left: "50%", transform: "translateX(-50%)",
-      width: 375, height: "100%", zIndex: 9998,
-      background: "rgba(0,0,0,0.6)",
-      display: "flex", alignItems: "center", justifyContent: "center", padding: "24px",
-    }}>
-      <div style={{
-        background: "#fff", borderRadius: 18, padding: "22px", width: "100%",
-        boxShadow: "0 8px 32px rgba(0,0,0,0.2)",
-      }}>
-        {/* 헤더 */}
-        <div style={{ textAlign: "center", marginBottom: 16 }}>
-          <div style={{ fontSize: 36, marginBottom: 8 }}>🏥</div>
-          <div style={{ fontSize: 16, fontWeight: 800, color: "#111", marginBottom: 4 }}>
-            병원 이송 정보 입력
-          </div>
-          <div style={{ fontSize: 13, color: "#666", lineHeight: 1.6 }}>
-            상급자가 응급조치/병원이송을 지시했습니다.<br />이송할 병원 이름을 입력해주세요.
-          </div>
-        </div>
-
-        {/* 병원 이름 입력 */}
-        {!hospitalSubmitted ? (
-          <>
-            <div style={{
-              border: "1.5px solid #E2E8F0", borderRadius: 10,
-              padding: "12px 14px", marginBottom: 14, background: "#F7FAFC",
-            }}>
-              <div style={{ fontSize: 12, color: "#888", marginBottom: 6 }}>병원 이름</div>
-              <input
-                value={hospitalName}
-                onChange={(e) => setHospitalName(e.target.value)}
-                placeholder="예: 서산중앙병원"
-                style={{
-                  width: "100%", border: "none", outline: "none",
-                  fontSize: 16, fontWeight: 600, color: "#111",
-                  background: "transparent",
-                }}
-                autoFocus
-              />
-            </div>
-
-            <button
-              onClick={async () => {
-                if (!hospitalName.trim()) return;
-                // Supabase에 병원 이름 저장
-                await supabase.from("directives").insert({
-                  accident_id: "2024-0625-001",
-                  action_key: "병원이름_입력완료",
-                  action_label: "병원 이송 정보",
-                  message: `이송 병원: ${hospitalName}`,
-                  supervisor_name: "현장 작업자",
-                });
-                setHospitalSubmitted(true);
-              }}
-              style={{
-                width: "100%", padding: "14px", background: "#E53E3E",
-                border: "none", borderRadius: 10, fontSize: 15,
-                fontWeight: 700, color: "#fff", cursor: "pointer",
-                opacity: hospitalName.trim() ? 1 : 0.4,
-              }}
-            >확인 — 병원 이름 전송</button>
-          </>
-        ) : (
-          <>
-            <div style={{
-              background: "#F0FFF4", border: "1px solid #9AE6B4",
-              borderRadius: 10, padding: "14px", marginBottom: 14, textAlign: "center",
-            }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: "#276749", marginBottom: 4 }}>
-                ✅ 전송 완료
-              </div>
-              <div style={{ fontSize: 13, color: "#555" }}>
-                이송 병원: <strong>{hospitalName}</strong><br />
-                상급자와 상황실에 자동 전송됩니다.
-              </div>
-            </div>
-            <button
-              onClick={() => { setShowHospitalInput(false); setHospitalSubmitted(false); setHospitalName(""); }}
-              style={{
-                width: "100%", padding: "13px", background: "#276749",
-                border: "none", borderRadius: 10, fontSize: 14,
-                fontWeight: 700, color: "#fff", cursor: "pointer",
-              }}
-            >닫기</button>
-          </>
-        )}
-      </div>
+  // 사진 확대보기 — 전체화면 라이트박스, 배경 탭하면 닫힘
+  const PhotoLightbox = () => lightboxUrl ? (
+    <div
+      onClick={() => setLightboxUrl(null)}
+      style={{
+        position: "fixed", top: 0, left: "50%", transform: "translateX(-50%)",
+        width: 375, height: "100%", zIndex: 10000,
+        background: "rgba(0,0,0,0.9)",
+        display: "flex", alignItems: "center", justifyContent: "center", padding: 16,
+      }}
+    >
+      <button
+        onClick={() => setLightboxUrl(null)}
+        style={{
+          position: "absolute", top: 16, right: 16, width: 36, height: 36,
+          borderRadius: "50%", background: "rgba(255,255,255,0.15)", border: "none",
+          color: "#fff", fontSize: 20, cursor: "pointer",
+        }}
+      >×</button>
+      <img
+        src={lightboxUrl}
+        alt="사고 현장 사진 확대"
+        onClick={(e) => e.stopPropagation()}
+        style={{ maxWidth: "100%", maxHeight: "100%", borderRadius: 8, objectFit: "contain" }}
+      />
     </div>
   ) : null;
 
@@ -669,9 +880,9 @@ export default function App() {
   const GlobalOverlay = () => (
     <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, pointerEvents: "none", zIndex: 99999 }}>
       <div style={{ pointerEvents: "auto" }}>
-        <NotifBanner />
-        <NotifPopup />
-        <HospitalInputPopup />
+        {NotifBanner()}
+        {NotifPopup()}
+        {PhotoLightbox()}
       </div>
     </div>
   );
@@ -733,6 +944,7 @@ export default function App() {
         return;
       }
       setUserRole(user.role);
+      setCurrentUser(user);
       if (user.work_type) setWorkType(user.work_type);
       if (user.role === "worker")     go(SCREENS.MAIN);
       if (user.role === "supervisor") go(SCREENS.SUPERVISOR_DASHBOARD);
@@ -740,9 +952,7 @@ export default function App() {
     };
 
     return (
-      <div style={styles.phone}><GlobalOverlay />
-        <div style={styles.statusBar}><span>9:41</span><span>📶 </span></div>
-
+      <div style={styles.phone}>{GlobalOverlay()}
         <div style={{
           flex: 1, display: "flex", flexDirection: "column",
           alignItems: "center", justifyContent: "center", padding: "28px 24px",
@@ -895,6 +1105,7 @@ export default function App() {
                           .single();
                         if (!user) { setVerifyError("사용자 정보를 불러올 수 없습니다."); return; }
                         setUserRole(user.role);
+                        setCurrentUser(user);
                         if (user.work_type) setWorkType(user.work_type);
                         if (user.role === "worker")     go(SCREENS.MAIN);
                         if (user.role === "supervisor") go(SCREENS.SUPERVISOR_DASHBOARD);
@@ -963,18 +1174,49 @@ export default function App() {
 
   // ── 화면 01: 메인 ──────────────────────────────────────
   if (screen === SCREENS.MAIN) {
+    // 작업자 홈에서도 사고 현황을 볼 수 있도록 목록을 불러온다
+    const loadWorkerReports = async () => {
+      setReportsLoading(true);
+      const { data } = await supabase
+        .from("accident_reports")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (data) setAccidentReports(data);
+      setReportsLoading(false);
+    };
+    if (accidentReports.length === 0 && !reportsLoading) loadWorkerReports();
+    if (Object.keys(staffTeamMap).length === 0) loadStaffTeamMap();
+
+    const visibleReports = accidentReports.filter(a => !a.is_deleted);
+    const totalCount  = visibleReports.length;
+    const activeCount = visibleReports.filter(a => a.status === "진행중").length;
+    const doneCount   = visibleReports.filter(a => a.status === "완료").length;
+    const activeReports = visibleReports.filter(a => a.status === "진행중");
+
+    const goToReportStatus = (acc) => {
+      setCurrentAccidentId(acc.id);
+      setReportedAt(acc.created_at);
+      setWorkType(acc.work_type);
+      go(SCREENS.WORKER_TIMELINE);
+    };
+
     return (
-      <div style={styles.phone}><GlobalOverlay />
-        <div style={styles.statusBar}>
-          <span>9:41</span>
-          <span>📶 </span>
-        </div>
+      <div style={styles.phone}>{GlobalOverlay()}
         <div style={{ textAlign: "center", padding: "20px 20px 0", position: "relative" }}>
           <div style={{ position: "absolute", right: 20, top: 20, fontSize: 22 }}>🔔</div>
           <div style={{ fontSize: 20, fontWeight: 800, color: "#111" }}>중대재해 대응 앱</div>
           <div style={{ fontSize: 13, color: "#888", marginTop: 4 }}>안전한 현장을 위한 즉각적인 대응</div>
+          {currentUser && (
+            <div style={{
+              display: "inline-flex", alignItems: "center", gap: 6, marginTop: 10,
+              background: "#F7FAFC", border: "1px solid #E2E8F0", borderRadius: 20,
+              padding: "5px 14px", fontSize: 12, fontWeight: 600, color: "#444",
+            }}>
+              👤 {currentUser.name}{currentUser.team ? ` · ${currentUser.team}` : ""}
+            </div>
+          )}
         </div>
-        <div style={{ padding: "24px 20px", flex: 1, display: "flex", flexDirection: "column", gap: 16 }}>
+        <div style={{ padding: "24px 20px", flex: 1, display: "flex", flexDirection: "column", gap: 16, overflowY: "auto" }}>
           {/* 사고 발생 버튼 */}
           <button
             onClick={() => { setIsMock(false); go(SCREENS.ACCIDENT_TYPE); }}
@@ -1019,6 +1261,52 @@ export default function App() {
             <div style={{ fontSize: 28, fontWeight: 800, marginBottom: 6 }}>모의훈련</div>
             <div style={{ fontSize: 14, opacity: 0.85 }}>정기 훈련 및 교육용</div>
           </button>
+
+          {/* 사고 현황 요약 */}
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: "#111", marginBottom: 10 }}>📋 사고 현황</div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+              <div style={{ flex: 1, background: "#F7FAFC", border: "1px solid #E2E8F0", borderRadius: 10, padding: "12px 8px", textAlign: "center" }}>
+                <div style={{ fontSize: 20, fontWeight: 800, color: "#2D3748" }}>{totalCount}</div>
+                <div style={{ fontSize: 11, color: "#888", marginTop: 2 }}>전체</div>
+              </div>
+              <div style={{ flex: 1, background: "#FFF5F5", border: "1px solid #FED7D7", borderRadius: 10, padding: "12px 8px", textAlign: "center" }}>
+                <div style={{ fontSize: 20, fontWeight: 800, color: "#E53E3E" }}>{activeCount}</div>
+                <div style={{ fontSize: 11, color: "#C53030", marginTop: 2 }}>진행중</div>
+              </div>
+              <div style={{ flex: 1, background: "#F0FFF4", border: "1px solid #9AE6B4", borderRadius: 10, padding: "12px 8px", textAlign: "center" }}>
+                <div style={{ fontSize: 20, fontWeight: 800, color: "#276749" }}>{doneCount}</div>
+                <div style={{ fontSize: 11, color: "#276749", marginTop: 2 }}>완료</div>
+              </div>
+            </div>
+
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#111", marginBottom: 8 }}>🚨 진행중인 사고</div>
+            {activeReports.length === 0 ? (
+              <div style={{
+                background: "#F0FFF4", border: "1px solid #9AE6B4", borderRadius: 10,
+                padding: "16px", textAlign: "center", fontSize: 13, color: "#276749", fontWeight: 600,
+              }}>✅ 현재 진행중인 사고가 없습니다.</div>
+            ) : (
+              activeReports.map(acc => (
+                <button
+                  key={acc.id}
+                  onClick={() => goToReportStatus(acc)}
+                  style={{
+                    width: "100%", textAlign: "left", background: "#fff",
+                    border: "1.5px solid #FED7D7", borderRadius: 12,
+                    padding: "12px 14px", marginBottom: 8, cursor: "pointer",
+                    boxShadow: "0 2px 8px rgba(229,62,62,0.08)",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                    <span style={{ fontWeight: 700, fontSize: 13, color: "#111" }}>{acc.accident_type} 사고</span>
+                    <span style={{ background: "#FFF5F5", color: "#E53E3E", fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 20, border: "1px solid #FED7D7" }}>진행중</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: "#888" }}>👷 {staffTeamMap[acc.worker_name] ? `${staffTeamMap[acc.worker_name]} · ` : ""}{acc.worker_name} · {acc.work_type}</div>
+                </button>
+              ))
+            )}
+          </div>
 
           {/* 모의훈련 알람 팝업 */}
           {showMockAlert && (
@@ -1174,8 +1462,7 @@ export default function App() {
   // ── 화면 02: 사고 유형 선택 ──────────────────────────
   if (screen === SCREENS.ACCIDENT_TYPE) {
     return (
-      <div style={styles.phone}><GlobalOverlay />
-        <div style={styles.statusBar}><span>9:41</span><span>📶 </span></div>
+      <div style={styles.phone}>{GlobalOverlay()}
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.MAIN)}>‹</button>
           <span style={styles.headerTitle}>사고 유형 선택</span>
@@ -1215,7 +1502,23 @@ export default function App() {
   // ── 화면 03: 사고 위치 확인 ──────────────────────────
   if (screen === SCREENS.LOCATION) {
 
-    const KAKAO_KEY = "79643dd3b407eebf29d5139a7c5543de";
+    const KAKAO_KEY = "b77c6b19bec3a7d35158dba04485acfe";
+
+    // Nominatim(OpenStreetMap) 결과는 "건물번호, 도로명, 동, 구, 시" 순으로 오기 때문에
+    // 한국 주소 표기 순서("시 구 동 도로명 건물번호")로 직접 재조립한다.
+    const formatKoreanAddress = (addr, fallbackDisplayName, lat, lng) => {
+      if (addr) {
+        const parts = [
+          addr.state,                                                       // 시/도
+          addr.city || addr.county,                                         // 시/군/구
+          addr.borough || addr.suburb || addr.village || addr.town || addr.neighbourhood, // 동/읍/면
+          addr.road,                                                        // 도로명
+          addr.house_number,                                                // 건물번호
+        ].filter(Boolean);
+        if (parts.length > 0) return parts.join(" ");
+      }
+      return fallbackDisplayName || `위도 ${lat.toFixed(4)}, 경도 ${lng.toFixed(4)}`;
+    };
 
     // GPS → 카카오 좌표→주소 변환
     const getGpsLocation = () => {
@@ -1235,27 +1538,27 @@ export default function App() {
           try {
             const res = await fetch(
               `https://dapi.kakao.com/v2/local/geo/coord2address.json?x=${lng}&y=${lat}`,
-              { headers: { Authorization: `KakaoAK 79643dd3b407eebf29d5139a7c5543de` } }
+              { headers: { Authorization: `KakaoAK ${KAKAO_KEY}` } }
             );
             const data = await res.json();
             if (data.documents && data.documents.length > 0) {
               const addr = data.documents[0].address;
               setGpsAddress(addr.address_name);
             } else {
-              // 카카오 실패 시 nominatim 사용
+              // 카카오 실패 시 nominatim 사용 — 구조화된 address 필드로 한국식 순서로 재조립
               const res2 = await fetch(
-                `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=ko`
+                `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1&accept-language=ko`
               );
               const data2 = await res2.json();
-              setGpsAddress(data2.display_name || `위도 ${lat.toFixed(4)}, 경도 ${lng.toFixed(4)}`);
+              setGpsAddress(formatKoreanAddress(data2.address, data2.display_name, lat, lng));
             }
           } catch {
             try {
               const res2 = await fetch(
-                `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=ko`
+                `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1&accept-language=ko`
               );
               const data2 = await res2.json();
-              setGpsAddress(data2.display_name || `위도 ${lat.toFixed(4)}, 경도 ${lng.toFixed(4)}`);
+              setGpsAddress(formatKoreanAddress(data2.address, data2.display_name, lat, lng));
             } catch {
               setGpsAddress(`위도 ${lat.toFixed(4)}, 경도 ${lng.toFixed(4)}`);
             }
@@ -1271,7 +1574,7 @@ export default function App() {
       );
     };
 
-    // 주소 검색 (카카오 키워드 검색)
+    // 주소 검색 (카카오 키워드 검색, 실패 시 Nominatim으로 폴백)
     const searchAddress = async () => {
       if (!addressSearchQuery.trim()) return;
       try {
@@ -1284,6 +1587,22 @@ export default function App() {
           const doc = data.documents[0];
           setGpsAddress(doc.address_name || doc.road_address_name);
           setGpsCoords({ lat: parseFloat(doc.y), lng: parseFloat(doc.x) });
+          setShowAddressSearch(false);
+          setAddressSearchQuery("");
+          return;
+        }
+      } catch {
+        // 카카오 요청 자체가 실패(401 등)하면 아래 Nominatim으로 폴백
+      }
+      try {
+        const res2 = await fetch(
+          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(addressSearchQuery)}&format=json&addressdetails=1&accept-language=ko&countrycodes=kr&limit=1`
+        );
+        const data2 = await res2.json();
+        if (data2 && data2.length > 0) {
+          const doc = data2[0];
+          setGpsAddress(formatKoreanAddress(doc.address, doc.display_name, parseFloat(doc.lat), parseFloat(doc.lon)));
+          setGpsCoords({ lat: parseFloat(doc.lat), lng: parseFloat(doc.lon) });
           setShowAddressSearch(false);
           setAddressSearchQuery("");
         } else {
@@ -1300,8 +1619,7 @@ export default function App() {
     }
 
     return (
-      <div style={styles.phone}><GlobalOverlay />
-        <div style={styles.statusBar}><span>9:41</span><span>📶 </span></div>
+      <div style={styles.phone}>{GlobalOverlay()}
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.ACCIDENT_TYPE)}>‹</button>
           <span style={styles.headerTitle}>사고 위치 확인</span>
@@ -1439,8 +1757,7 @@ export default function App() {
   // ── 화면 04: 사고 내용 입력 ──────────────────────────
   if (screen === SCREENS.DETAILS) {
     return (
-      <div style={styles.phone}><GlobalOverlay />
-        <div style={styles.statusBar}><span>9:41</span><span>📶 </span></div>
+      <div style={styles.phone}>{GlobalOverlay()}
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.LOCATION)}>‹</button>
           <span style={styles.headerTitle}>사고 내용 입력</span>
@@ -1573,6 +1890,7 @@ export default function App() {
         id: Date.now() + Math.random(),
         url: URL.createObjectURL(f),
         name: f.name,
+        file: f, // 실제 업로드용 원본 파일
       }));
       setUploadedPhotos(prev => [...prev, ...newPhotos]);
       setPhotoError(false);
@@ -1592,8 +1910,7 @@ export default function App() {
     };
 
     return (
-      <div style={styles.phone}><GlobalOverlay />
-        <div style={styles.statusBar}><span>9:41</span><span>📶 </span></div>
+      <div style={styles.phone}>{GlobalOverlay()}
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.DETAILS)}>‹</button>
           <span style={styles.headerTitle}>사진/동영상 등록</span>
@@ -1705,32 +2022,11 @@ export default function App() {
 
   // ── 화면 05.5: 긴급 조치 현황 ─────────────────────────
   if (screen === SCREENS.ACTIONS) {
-    const ACTION_ITEMS = [
-      {
-        key: "stop",
-        icon: "🚫",
-        title: "작업 중지",
-        desc: "현장 모든 작업을 즉시 중지했습니까?",
-        color: "#C53030",
-        subItems: ["작업 중지", "장비 가동 중단", "작업자 대피 완료"],
-      },
-      {
-        key: "report119",
-        icon: "🚑",
-        title: "119 신고",
-        desc: "119에 신고 및 연락했습니까?",
-        color: "#2B6CB0",
-        subItems: ["119 신고 완료", "응급조치 완료", "구급대 도착"],
-      },
-      {
-        key: "control",
-        icon: "🚧",
-        title: "현장 통제",
-        desc: "사고 구역 출입을 통제했습니까?",
-        color: "#B7791F",
-        subItems: ["출입 차단선 설치", "외부인 접근 차단", "통제 담당자 배치"],
-      },
-    ];
+    // 상급자(또는 상황실)가 실제로 보낸 지시에 해당하는 항목만 노출 — 팝업과 동일한 공용 설정 사용
+    const ACTION_ITEMS = Object.entries(DIRECTIVE_CHECKLIST)
+      .filter(([directiveKey]) => !!directiveStatus[directiveKey])
+      .map(([directiveKey, cfg]) => ({ ...cfg, key: cfg.itemKey, desc: cfg.question, directiveKey }));
+
 
     const nowHHMM = () => {
       const d = new Date();
@@ -1770,8 +2066,7 @@ export default function App() {
     const totalCount = ACTION_ITEMS.length;
 
     return (
-      <div style={styles.phone}><GlobalOverlay />
-        <div style={styles.statusBar}><span>9:41</span><span>📶 </span></div>
+      <div style={styles.phone}>{GlobalOverlay()}
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.WORKER_TIMELINE)}>‹</button>
           <span style={styles.headerTitle}>긴급 조치 현황 입력</span>
@@ -1785,6 +2080,16 @@ export default function App() {
             체크할 때마다 시각이 자동 기록되어 보고서에 함께 첨부됩니다.
           </p>
 
+          {ACTION_ITEMS.length === 0 ? (
+            <div style={{
+              background: "#F7FAFC", border: "1px solid #E2E8F0", borderRadius: 10,
+              padding: "24px 16px", textAlign: "center", color: "#888", fontSize: 13, lineHeight: 1.7,
+            }}>
+              아직 상급자(또는 상황실)로부터 받은 조치 지시가 없습니다.<br />
+              지시가 오면 여기에서 해당 조치를 체크할 수 있어요.
+            </div>
+          ) : (
+          <>
           {/* 진행 요약 바 */}
           <div style={{
             background: "#F7FAFC", borderRadius: 10, padding: "12px 14px",
@@ -1911,6 +2216,8 @@ export default function App() {
               항목별 체크 시각이 모두 기록됩니다.
             </span>
           </div>
+          </>
+          )}
 
           <button style={styles.redBtn} onClick={() => go(SCREENS.WORKER_TIMELINE)}>
             확인 완료 — 보고 현황 보기
@@ -1936,8 +2243,7 @@ export default function App() {
     const canSend = checkedRecipients.length > 0;
 
     return (
-      <div style={styles.phone}><GlobalOverlay />
-        <div style={styles.statusBar}><span>9:41</span><span>📶 </span></div>
+      <div style={styles.phone}>{GlobalOverlay()}
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.PHOTOS)}>‹</button>
           <span style={styles.headerTitle}>보고 대상 확인</span>
@@ -1983,7 +2289,7 @@ export default function App() {
                     style={{
                       width: "100%", display: "flex", alignItems: "center",
                       justifyContent: "space-between", padding: "12px 10px",
-                      borderBottom: "1px solid #F0F0F0", background: checked ? "#FFF5F5" : "#fff",
+                      background: checked ? "#FFF5F5" : "#fff",
                       border: "none", borderBottom: "1px solid #F0F0F0",
                       borderRadius: checked ? 8 : 0, cursor: "pointer",
                       transition: "background 0.15s", marginBottom: checked ? 2 : 0,
@@ -2043,9 +2349,10 @@ export default function App() {
               }}
               onClick={async () => {
                 if (!canSend) return;
-                // Supabase에 사고 보고 저장
-                await supabase.from("accident_reports").insert({
-                  worker_name: "김철수",
+                // 저장(insert)과 조회(select)를 분리 — 한 번에 묶으면 '방금 넣은 걸 다시 읽는' 권한이
+                // 없을 때 insert 자체가 롤백되어 아예 저장되지 않는 문제가 있어 분리함
+                const { error: insertError } = await supabase.from("accident_reports").insert({
+                  worker_name: currentUser?.name || "현장 작업자",
                   accident_type: selectedType,
                   work_type: workType,
                   location: gpsAddress || "위치 정보 없음",
@@ -2054,6 +2361,48 @@ export default function App() {
                   injured_name: injuredName,
                   status: "진행중",
                 });
+                if (insertError) {
+                  console.error("사고 보고 저장 실패:", insertError);
+                  alert("보고 전송에 실패했습니다. 네트워크 상태를 확인 후 다시 시도해주세요.");
+                  return; // 저장 실패 시 완료 화면으로 넘어가지 않음
+                }
+                // 방금 저장한 사고의 실제 id를 별도로 조회 (타임라인 연동용 — 실패해도 보고 자체는 이미 저장됨)
+                const { data: latest } = await supabase
+                  .from("accident_reports")
+                  .select("*")
+                  .eq("worker_name", currentUser?.name || "현장 작업자")
+                  .order("created_at", { ascending: false })
+                  .limit(1)
+                  .maybeSingle();
+                if (latest) {
+                  setCurrentAccidentId(latest.id);
+                  setReportedAt(latest.created_at);
+                  // 첨부 사진을 Storage에 업로드해서 상급자/상황실 화면에서도 볼 수 있게 함
+                  // (실패해도 사고 보고 자체는 이미 저장된 상태라 흐름을 막지 않음)
+                  try {
+                    const photoUrls = [];
+                    for (const p of uploadedPhotos) {
+                      if (!p.file) continue;
+                      const safeName = p.file.name.replace(/[^a-zA-Z0-9.\-_]/g, "_");
+                      const path = `${latest.id}/${Date.now()}_${safeName}`;
+                      const { error: uploadError } = await supabase.storage
+                        .from("accident-photos")
+                        .upload(path, p.file);
+                      if (uploadError) { console.error("사진 업로드 실패:", uploadError); continue; }
+                      const { data: pub } = supabase.storage.from("accident-photos").getPublicUrl(path);
+                      if (pub?.publicUrl) photoUrls.push(pub.publicUrl);
+                    }
+                    if (photoUrls.length > 0) {
+                      const { error: photoUpdateError } = await supabase
+                        .from("accident_reports")
+                        .update({ photo_urls: photoUrls })
+                        .eq("id", latest.id);
+                      if (photoUpdateError) console.error("사진 URL 저장 실패:", photoUpdateError);
+                    }
+                  } catch (e) {
+                    console.error("사진 업로드 중 오류:", e);
+                  }
+                }
                 go(SCREENS.COMPLETE);
               }}
             >전송</button>
@@ -2065,7 +2414,7 @@ export default function App() {
 
   // ── 화면 07: 보고 완료 ──────────────────────────────
   if (screen === SCREENS.COMPLETE) {
-    return <CompleteScreen go={go} />;
+    return <CompleteScreen go={go} GlobalOverlay={GlobalOverlay} />;
   }
 
   // ── 화면 07-B: 현장작업자 보고현황 (타임라인 + 상급자 조치 지시) ─
@@ -2077,92 +2426,13 @@ export default function App() {
       { key: "병원이송",   icon: "🏥", color: "#6B46C1", label: "병원 이송" },
     ];
 
-    const sentCount = SUPERVISOR_ITEMS.filter(it => directiveSent[it.key]).length;
+    // 상급자 화면과 동일한 소스(DB)에서 같은 타임라인을 불러온다
+    if (tlLoadedFor !== currentAccidentId) loadSharedTimeline(currentAccidentId);
 
-    // 타임라인 이벤트 조립
-    const fixedEvents = [
-      {
-        time: "14:35", icon: "🚨", color: "#E53E3E",
-        title: "사고 발생",
-        desc: "옥외 배관 점검 중 난간 파손으로 추락",
-        sub: "충청남도 서산시 대산읍 · 부상자 있음",
-        pending: false,
-      },
-      {
-        time: "14:36", icon: "📋", color: "#E53E3E",
-        title: "1차 보고 완료",
-        desc: `${checkedRecipients.length || 4}명에게 전송됨`,
-        sub: `${workType || "유지보수"} 보고 체계`,
-        pending: false,
-      },
-    ];
-
-    const ACTION_LABELS = { stop: "작업 중지", report119: "119 신고", control: "현장 통제" };
-    const ACTION_ICONS  = { stop: "🚫",      report119: "🚑",      control: "🚧" };
-    const ACTION_COLORS = { stop: "#C53030", report119: "#2B6CB0", control: "#B7791F" };
-    const SUB_LABELS = {
-      stop: ["작업 중지", "장비 가동 중단", "작업자 대피 완료"],
-      report119: ["119 신고 완료", "응급조치 완료", "구급대 도착"],
-      control: ["출입 차단선 설치", "외부인 접근 차단", "통제 담당자 배치"],
-    };
-
-    // 작업자가 체크한 세부 항목들을 시각 순서대로 타임라인 이벤트로 변환
-    const workerActionEvents = Object.entries(subItemTimes)
-      .filter(([, time]) => time)
-      .sort((a, b) => (a[1] || "").localeCompare(b[1] || ""))
-      .map(([id, time]) => {
-        const [itemKey, subIdxStr] = id.split("-");
-        const subIdx = Number(subIdxStr);
-        return {
-          time,
-          icon: ACTION_ICONS[itemKey], color: ACTION_COLORS[itemKey],
-          title: `${ACTION_LABELS[itemKey]} — ${SUB_LABELS[itemKey][subIdx]}`,
-          desc: "현장 작업자 체크 완료",
-          sub: "",
-          pending: false,
-        };
-      });
-
-    const sentDirectives = SUPERVISOR_ITEMS
-      .filter(it => directiveSent[it.key])
-      .sort((a, b) => (directiveTimes[a.key] || "").localeCompare(directiveTimes[b.key] || ""))
-      .map(it => ({
-        time: directiveTimes[it.key],
-        icon: it.icon, color: it.color,
-        title: `상급자 지시 — ${it.label}`,
-        desc: "지시 문자 전송 완료",
-        sub: "김현당 팀장 발신",
-        pending: false,
-      }));
-
-    const pendingDirectives = SUPERVISOR_ITEMS
-      .filter(it => !directiveSent[it.key])
-      .map(it => ({
-        time: null, icon: it.icon, color: "#A0AEC0",
-        title: `${it.label}`,
-        desc: "상급자 지시 대기 중",
-        sub: "",
-        pending: true,
-      }));
-
-    // 작업자가 확인한 지시 알림을 타임라인 이벤트로 변환
-    const confirmedNotifs = notifications
-      .filter(n => n.confirmedAt)
-      .sort((a, b) => (a.confirmedAt || "").localeCompare(b.confirmedAt || ""))
-      .map(n => ({
-        time: n.confirmedAt,
-        icon: "✓", color: "#276749",
-        title: `${n.actionLabel} — 확인 완료`,
-        desc: "현장 작업자 확인",
-        sub: "",
-        pending: false,
-      }));
-
-    const allEvents = [...fixedEvents, ...workerActionEvents, ...confirmedNotifs, ...sentDirectives, ...pendingDirectives];
+    const sentCount = SUPERVISOR_ITEMS.filter(it => directiveStatus[it.key]).length;
 
     return (
-      <div style={styles.phone}><GlobalOverlay />
-        <div style={styles.statusBar}><span>9:41</span><span>📶 </span></div>
+      <div style={styles.phone}>{GlobalOverlay()}
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.COMPLETE)}>‹</button>
           <span style={styles.headerTitle}>보고 현황</span>
@@ -2170,138 +2440,63 @@ export default function App() {
         </div>
         <div style={styles.body}>
 
-          {/* 보고 완료 요약 */}
-          <div style={{
-            background: "#F0FFF4", border: "1px solid #9AE6B4",
-            borderRadius: 10, padding: "12px 14px", marginBottom: 14,
-            display: "flex", alignItems: "center", gap: 12,
-          }}>
-            <div style={{
-              width: 40, height: 40, borderRadius: "50%", background: "#E53E3E",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 20, color: "#fff", flexShrink: 0,
-            }}>✓</div>
-            <div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: "#276749" }}>1차 보고 완료</div>
-              <div style={{ fontSize: 12, color: "#555", marginTop: 2 }}>
-                {checkedRecipients.length || 4}명 전송 · {workType || "유지보수"} 보고 체계
-              </div>
+          {/* 이송 병원 정보 — 언제든지 작성/수정 가능, 저장 시 타임라인에 즉시 반영 */}
+          <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 12, padding: 14, marginBottom: 14 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#111", marginBottom: 8 }}>🏥 이송 병원 정보</div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input
+                value={hospitalName}
+                onChange={(e) => setHospitalName(e.target.value)}
+                placeholder="예: 서산중앙병원"
+                style={{
+                  flex: 1, padding: "10px 12px", border: "1.5px solid #E2E8F0",
+                  borderRadius: 8, fontSize: 14, outline: "none",
+                }}
+              />
+              <button
+                onClick={async () => {
+                  if (!hospitalName.trim() || !currentAccidentId) return;
+                  await supabase.from("directives").insert({
+                    accident_id: currentAccidentId,
+                    action_key: "병원이름_입력완료",
+                    action_label: "병원 이송 정보",
+                    message: `이송 병원: ${hospitalName}`,
+                    supervisor_name: currentUser?.name || "현장 작업자",
+                  });
+                  loadSharedTimeline(currentAccidentId);
+                }}
+                style={{
+                  padding: "0 18px", background: "#6B46C1", color: "#fff",
+                  border: "none", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer",
+                }}
+              >저장</button>
             </div>
           </div>
 
-          {/* 상급자 조치 진행률 */}
-          <div style={{
-            background: "#F7FAFC", border: "1px solid #E2E8F0",
-            borderRadius: 10, padding: "12px 14px", marginBottom: 18,
-          }}>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-              <span style={{ fontSize: 13, fontWeight: 700, color: "#111" }}>상급자 조치 지시 현황</span>
-              <span style={{
-                fontSize: 13, fontWeight: 700,
-                color: sentCount === SUPERVISOR_ITEMS.length ? "#276749" : "#E53E3E",
-              }}>{sentCount}/{SUPERVISOR_ITEMS.length} 완료</span>
-            </div>
-            <div style={{ height: 6, background: "#E2E8F0", borderRadius: 3, overflow: "hidden" }}>
-              <div style={{
-                height: "100%", borderRadius: 3, transition: "width 0.4s",
-                width: `${(sentCount / SUPERVISOR_ITEMS.length) * 100}%`,
-                background: sentCount === SUPERVISOR_ITEMS.length ? "#38A169" : "#E53E3E",
-              }} />
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 5 }}>
-              <span style={{ fontSize: 11, color: "#888" }}>전송 완료 {sentCount}건</span>
-              <span style={{ fontSize: 11, color: "#aaa" }}>대기 중 {SUPERVISOR_ITEMS.length - sentCount}건</span>
-            </div>
+          {/* 타임라인 — 상급자 화면과 동일한 타임라인을 그대로 표시 */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+            <span style={{ fontSize: 14, fontWeight: 700, color: "#111" }}>진행 타임라인</span>
+            <button
+              onClick={() => { setTlLoadedFor(null); loadSharedTimeline(currentAccidentId); }}
+              style={{ background: "none", border: "none", fontSize: 12, color: "#E53E3E", cursor: "pointer", fontWeight: 700 }}
+            >새로고침</button>
           </div>
-
-          {/* 타임라인 */}
-          <div style={{ fontSize: 14, fontWeight: 700, color: "#111", marginBottom: 14 }}>진행 타임라인</div>
-          <div style={{ position: "relative" }}>
-            <div style={{
-              position: "absolute", left: 15, top: 16, bottom: 16,
-              width: 2, background: "#E2E8F0", zIndex: 0,
-            }} />
-            {allEvents.map((ev, i) => (
-              <div key={i} style={{ display: "flex", gap: 12, marginBottom: 18, position: "relative", zIndex: 1 }}>
-                {/* 아이콘 */}
-                <div style={{
-                  width: 32, height: 32, borderRadius: "50%", flexShrink: 0,
-                  background: ev.pending ? "#F0F4F8" : ev.color,
-                  border: `2px solid ${ev.pending ? "#CBD5E0" : ev.color}`,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 14, zIndex: 2, opacity: ev.pending ? 0.45 : 1,
-                }}>{ev.icon}</div>
-                {/* 카드 */}
-                <div style={{
-                  flex: 1, paddingTop: 2,
-                  background: ev.pending ? "transparent" : "#fff",
-                  border: ev.pending ? "none" : `1px solid ${ev.color}22`,
-                  borderRadius: ev.pending ? 0 : 10,
-                  padding: ev.pending ? "2px 0" : "10px 12px",
-                  opacity: ev.pending ? 0.4 : 1,
-                }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 3 }}>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: ev.pending ? "#A0AEC0" : "#111" }}>
-                      {ev.title}
-                    </span>
-                    {ev.time
-                      ? <span style={{
-                          fontSize: 11, fontWeight: 800, color: ev.color,
-                          background: `${ev.color}18`, borderRadius: 5, padding: "2px 7px", flexShrink: 0,
-                        }}>{ev.time}</span>
-                      : <span style={{ fontSize: 11, color: "#CBD5E0", flexShrink: 0 }}>대기 중</span>
-                    }
+          <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 12, padding: 14, marginBottom: 14 }}>
+            {tlEvents.length === 0 ? (
+              <div style={{ textAlign: "center", color: "#aaa", fontSize: 13 }}>아직 기록 없음</div>
+            ) : (
+              tlEvents.map((ev, i) => (
+                <div key={i} style={{ display: "flex", gap: 10, marginBottom: 10, alignItems: "flex-start" }}>
+                  <div style={{ width: 8, height: 8, borderRadius: "50%", background: ev.color, flexShrink: 0, marginTop: 4 }} />
+                  <div>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: "#2B6CB0", marginRight: 6 }}>{ev.time}</span>
+                    <span style={{ fontSize: 12, color: "#111" }}>{ev.text}</span>
                   </div>
-                  <div style={{ fontSize: 12, color: ev.pending ? "#CBD5E0" : "#666" }}>{ev.desc}</div>
-                  {!ev.pending && ev.sub && (
-                    <div style={{ fontSize: 11, color: "#aaa", marginTop: 2 }}>{ev.sub}</div>
-                  )}
                 </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
 
-          {/* 하단 안내 */}
-          {sentCount < SUPERVISOR_ITEMS.length ? (
-            <div style={{
-              background: "#FFFBEB", border: "1px solid #F6E05E",
-              borderRadius: 10, padding: "12px 14px", marginTop: 4,
-              display: "flex", gap: 8, alignItems: "flex-start",
-            }}>
-              <span style={{ fontSize: 15, flexShrink: 0 }}>⏳</span>
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: "#B7791F", marginBottom: 3 }}>
-                  상급자 조치 지시 대기 중
-                </div>
-                <div style={{ fontSize: 12, color: "#744210", lineHeight: 1.6 }}>
-                  상급자가 조치 지시를 완료하면 이 화면에 시각과 함께 표시됩니다.
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div style={{
-              background: "#F0FFF4", border: "1px solid #9AE6B4",
-              borderRadius: 10, padding: "12px 14px", marginTop: 4,
-              display: "flex", gap: 8, alignItems: "center",
-            }}>
-              <span style={{ fontSize: 18 }}>✅</span>
-              <span style={{ fontSize: 13, fontWeight: 700, color: "#276749" }}>
-                모든 상급자 조치 지시가 완료되었습니다.
-              </span>
-            </div>
-          )}
-
-          {/* 추가 조치 입력 버튼 */}
-          <button
-            onClick={() => go(SCREENS.ACTIONS)}
-            style={{
-              width: "100%", marginTop: 16, padding: "14px",
-              background: "#fff", color: "#E53E3E",
-              border: "1.5px solid #E53E3E", borderRadius: 12,
-              fontSize: 14, fontWeight: 700, cursor: "pointer",
-              display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-            }}
-          >🚨 추가로 긴급 조치 현황 입력하기</button>
         </div>
       </div>
     );
@@ -2322,11 +2517,13 @@ export default function App() {
     };
 
     if (accidentReports.length === 0 && !reportsLoading) loadReports();
+    if (Object.keys(staffTeamMap).length === 0) loadStaffTeamMap();
 
     const ACCIDENT_ICONS = { "추락": "🧗", "감전": "⚡", "낙하/비래": "🪨", "화재": "🔥", "끼임": "⚙️", "충돌": "💥" };
 
-    const activeList = accidentReports.filter(a => a.status === "진행중");
-    const doneList   = accidentReports.filter(a => a.status === "완료");
+    const visibleReports = accidentReports.filter(a => !a.is_deleted);
+    const activeList = visibleReports.filter(a => a.status === "진행중");
+    const doneList   = visibleReports.filter(a => a.status === "완료");
 
     const formatDate = (d) => {
       if (!d) return "-";
@@ -2335,11 +2532,7 @@ export default function App() {
     };
 
     return (
-      <div style={{ ...styles.phone, background: "#F7F8FC" }}>
-        <div style={{ ...styles.statusBar, background: "#1A365D", color: "#fff" }}>
-          <span>9:41</span><span>📶 </span>
-        </div>
-
+      <div style={{ ...styles.phone, background: "#F7F8FC" }}>{GlobalOverlay()}
         {/* 헤더 */}
         <div style={{
           background: "#1A365D", padding: "14px 20px 18px",
@@ -2350,6 +2543,11 @@ export default function App() {
             <div style={{ fontSize: 12, color: "rgba(255,255,255,0.65)", marginTop: 3 }}>
               상급자 모니터링 대시보드
             </div>
+            {currentUser && (
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.85)", marginTop: 4 }}>
+                👤 {currentUser.name}{currentUser.team ? ` · ${currentUser.team}` : ""}
+              </div>
+            )}
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             <button
@@ -2374,7 +2572,7 @@ export default function App() {
         {/* 요약 카드 */}
         <div style={{ display: "flex", gap: 10, padding: "14px 16px 0" }}>
           {[
-            { label: "전체",   value: accidentReports.length, bg: "#fff",    color: "#111",    border: "#E2E8F0" },
+            { label: "전체",   value: visibleReports.length, bg: "#fff",    color: "#111",    border: "#E2E8F0" },
             { label: "진행중", value: activeList.length,       bg: "#FFF5F5", color: "#C53030", border: "#FED7D7" },
             { label: "완료",   value: doneList.length,         bg: "#F0FFF4", color: "#276749", border: "#9AE6B4" },
           ].map(c => (
@@ -2411,7 +2609,7 @@ export default function App() {
                 activeList.map(acc => (
                   <button
                     key={acc.id}
-                    onClick={() => go(SCREENS.SUPERVISOR)}
+                    onClick={() => { setSelectedAccident(acc); go(SCREENS.SUPERVISOR); }}
                     style={{
                       width: "100%", background: "#fff",
                       border: "1.5px solid #FED7D7", borderRadius: 12,
@@ -2437,7 +2635,7 @@ export default function App() {
                     </div>
                     <div style={{ fontSize: 12, color: "#555", lineHeight: 1.7 }}>
                       <div>📍 {acc.location}</div>
-                      <div>👷 {acc.worker_name} · {acc.work_type}</div>
+                      <div>👷 {staffTeamMap[acc.worker_name] ? `${staffTeamMap[acc.worker_name]} · ` : ""}{acc.worker_name} · {acc.work_type}</div>
                       <div>🕐 {formatDate(acc.created_at)}</div>
                     </div>
                   </button>
@@ -2519,8 +2717,7 @@ export default function App() {
       : emergencyUsers.filter(u => emergencyTab === "전체" || u.work_type === emergencyTab || (!u.work_type && emergencyTab === "전체"));
 
     return (
-      <div style={styles.phone}><GlobalOverlay />
-        <div style={styles.statusBar}><span>9:41</span><span>📶 </span></div>
+      <div style={styles.phone}>{GlobalOverlay()}
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.MAIN)}>‹</button>
           <span style={styles.headerTitle}>비상 연락망</span>
@@ -2705,30 +2902,23 @@ export default function App() {
 
       const item = CHECKLIST_ITEMS.find(it => it.key === key);
 
-      // 응급조치 지시 시 → 작업자에게 병원 이름 입력 요청 알림
-      if (key === "병원이송") {
-        await supabase.from("directives").insert({
-          accident_id: "2024-0625-001",
-          action_key: "응급조치_병원입력",
-          action_label: "병원 이름 입력 요청",
-          message: "이송할 병원 이름을 입력해주세요.",
-          supervisor_name: "김현당 팀장",
-        });
-      }
+      const accidentIdForDirective = selectedAccident?.id || currentAccidentId;
 
       // Supabase에 지시 저장 → Realtime으로 현장작업자에게 전달
       await supabase.from("directives").insert({
-        accident_id: "2024-0625-001",
+        accident_id: accidentIdForDirective,
         action_key: key,
         action_label: item?.label || key,
         message: directiveTexts[key] || item?.defaultMsg || "",
-        supervisor_name: "김현당 팀장",
+        supervisor_name: currentUser?.name || "상급자",
       });
+
+      // 방금 보낸 지시까지 반영해서 타임라인 즉시 갱신 (작업자 화면과 동일하게 유지)
+      loadSharedTimeline(accidentIdForDirective);
     };
 
     return (
-      <div style={styles.phone}><GlobalOverlay />
-        <div style={styles.statusBar}><span>9:41</span><span>📶 </span></div>
+      <div style={styles.phone}>{GlobalOverlay()}
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={() => go(SCREENS.SUPERVISOR_DASHBOARD)}>‹</button>
           <span style={styles.headerTitle}>사고 상세 정보</span>
@@ -2736,16 +2926,15 @@ export default function App() {
         </div>
         <div style={{ ...styles.body, padding: "16px" }}>
 
-          {/* 상태 뱃지 */}
-          <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-            <span style={{ background: "#E53E3E", color: "#fff", fontSize: 12, fontWeight: 700, padding: "4px 10px", borderRadius: 6 }}>1차 보고</span>
-            <span style={{ background: "#FFF5F5", color: "#E53E3E", fontSize: 12, fontWeight: 700, padding: "4px 10px", borderRadius: 6, border: "1px solid #FED7D7" }}>미확인</span>
-            <div style={{ marginLeft: "auto" }}><span style={{ fontSize: 18, color: "#888" }}>⤢</span></div>
-          </div>
-
           {/* 사고 정보 */}
           <div style={{ background: "#FAFAFA", borderRadius: 10, padding: "14px", marginBottom: 14 }}>
-            {[["사고 일시","2024.06.25 (화) 14:35"],["사고 장소","충청남도 서산시 대산읍"],["사고 유형","추락"],["사고 내용","옥외 배관 점검 중 난간 파손으로 추락"]].map(([k,v]) => (
+            {[
+              ["사고 일시", selectedAccident?.created_at ? new Date(selectedAccident.created_at).toLocaleString("ko-KR") : "-"],
+              ["사고 장소", selectedAccident?.location || "-"],
+              ["사고 유형", selectedAccident?.accident_type || "-"],
+              ["사고 내용", selectedAccident?.content || "-"],
+              ["작업자", `${selectedAccident?.worker_name || "-"}${selectedAccident?.team ? " · " + selectedAccident.team : ""}`],
+            ].map(([k,v]) => (
               <div key={k} style={{ display: "flex", gap: 12, padding: "5px 0", fontSize: 14 }}>
                 <span style={{ color: "#888", minWidth: 60, flexShrink: 0 }}>{k}</span>
                 <span style={{ color: "#111", fontWeight: 500 }}>{v}</span>
@@ -2753,14 +2942,24 @@ export default function App() {
             ))}
           </div>
 
-          {/* 첨부 사진 */}
+          {/* 첨부 사진 — 작업자가 등록한 실제 사진, 클릭하면 확대 */}
           <div style={{ marginBottom: 14 }}>
             <div style={{ fontSize: 13, color: "#888", marginBottom: 8 }}>첨부 사진</div>
-            <div style={{ display: "flex", gap: 8 }}>
-              {[["#4A5568","🏗️"],["#718096","🏭"]].map(([bg,icon],i) => (
-                <div key={i} style={{ width: 90, height: 70, background: bg, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, color: "#fff" }}>{icon}</div>
-              ))}
-            </div>
+            {(selectedAccident?.photo_urls || []).length === 0 ? (
+              <div style={{ fontSize: 12, color: "#aaa" }}>등록된 사진이 없습니다.</div>
+            ) : (
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {selectedAccident.photo_urls.map((url, i) => (
+                  <img
+                    key={i}
+                    src={url}
+                    alt={`첨부 사진 ${i + 1}`}
+                    onClick={() => setLightboxUrl(url)}
+                    style={{ width: 90, height: 70, objectFit: "cover", borderRadius: 8, cursor: "pointer", border: "1px solid #E2E8F0" }}
+                  />
+                ))}
+              </div>
+            )}
           </div>
 
           {/* ── 조치 지시 체크리스트 ── */}
@@ -2907,66 +3106,17 @@ export default function App() {
 
   // ── 화면 08-B: 보고 현황 타임라인 ────────────────────
   if (screen === SCREENS.TIMELINE) {
-    const loadTimeline = async () => {
-      const results = [];
-      // 사고 보고 불러오기
-      const { data: reports } = await supabase
-        .from("accident_reports")
-        .select("*")
-        .order("created_at", { ascending: true });
-      if (reports) {
-        reports.forEach(r => {
-          results.push({
-            time: new Date(r.created_at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" }),
-            text: "1차 보고 — " + r.accident_type + " / " + r.worker_name + " / " + r.location,
-            color: "#E24B4A",
-          });
-        });
-      }
-      // 상급자 지시 불러오기
-      const { data: dirs } = await supabase
-        .from("directives")
-        .select("*")
-        .order("sent_at", { ascending: true });
-      if (dirs) {
-        dirs.forEach(d => {
-          if (d.action_key === "응급조치_병원입력") return;
-          results.push({
-            time: new Date(d.sent_at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" }),
-            text: (d.action_key === "병원이름_입력완료" ? "병원 이름 입력 — " : "상급자 지시 — ") + d.action_label + (d.supervisor_name ? " (" + d.supervisor_name + ")" : ""),
-            color: d.action_key === "병원이름_입력완료" ? "#6B46C1" : "#2B6CB0",
-          });
-        });
-      }
-      // 출동 지시 불러오기
-      const { data: disps } = await supabase
-        .from("dispatches")
-        .select("*")
-        .order("dispatched_at", { ascending: true });
-      if (disps) {
-        disps.forEach(d => {
-          results.push({
-            time: new Date(d.dispatched_at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" }),
-            text: "출동 지시 — " + d.dispatcher_name + (d.accident_minutes ? " / 사고장소 " + d.accident_minutes + "분" : "") + (d.hospital_minutes ? " / 병원 " + d.hospital_minutes + "분" : ""),
-            color: "#276749",
-          });
-        });
-      }
-      // 시간순 정렬
-      results.sort((a, b) => a.time.localeCompare(b.time));
-      setTlEvents(results);
-    };
+    const timelineAccidentId = selectedAccident?.id || currentAccidentId;
 
-    if (tlEvents.length <= 3) loadTimeline();
+    if (tlLoadedFor !== timelineAccidentId) loadSharedTimeline(timelineAccidentId);
 
     return (
-      <div style={styles.phone}><GlobalOverlay />
-        <div style={styles.statusBar}><span>9:41</span><span>배터리</span></div>
+      <div style={styles.phone}>{GlobalOverlay()}
         <div style={styles.header}>
           <button style={styles.backBtn} onClick={goHome}>‹</button>
           <span style={styles.headerTitle}>보고 현황</span>
           <button
-            onClick={loadTimeline}
+            onClick={() => loadSharedTimeline(timelineAccidentId)}
             style={{ background: "none", border: "none", fontSize: 13, color: "#E53E3E", cursor: "pointer", fontWeight: 700 }}
           >새로고침</button>
         </div>
@@ -3002,12 +3152,6 @@ export default function App() {
 
 
   if (screen === SCREENS.SITUATION_ROOM) {
-    const MEMBERS = [
-      { id: "m1", role: "안전관리자", name: "이인판 차장", phone: "010-2345-6789" },
-      { id: "m2", role: "안전관리자", name: "박안전 과장", phone: "010-3456-1234" },
-      { id: "m3", role: "공사감독자", name: "김현당 팀장", phone: "010-1234-5678" },
-    ];
-
     const loadSituationReports = async () => {
       const { data } = await supabase
         .from("accident_reports")
@@ -3020,65 +3164,144 @@ export default function App() {
       const { data } = await supabase
         .from("users")
         .select("*")
-        .eq("is_active", true)
         .order("role", { ascending: true });
       if (data) setStaffList(data);
     };
 
     if (accidentReports.length === 0) loadSituationReports();
-    if (situationTab === "직원 관리" && staffList.length === 0) loadStaff();
+    if (Object.keys(staffTeamMap).length === 0) loadStaffTeamMap();
+    if (staffList.length === 0) loadStaff(); // 출동 지정(사고 현황 탭)에서도 필요해서 탭 상관없이 로드
+
+    // 선택된 사고가 바뀌면 그 사고에 해당하는 타임라인만 다시 불러옴 (작업자/상급자와 동일한 데이터)
+    if (situationTab === "사고 현황" && selectedAccident && tlLoadedFor !== selectedAccident.id) {
+      loadSharedTimeline(selectedAccident.id);
+    }
 
     const nowHHMM = () => {
       const d = new Date();
       return String(d.getHours()).padStart(2,"0") + ":" + String(d.getMinutes()).padStart(2,"0");
     };
 
+    // 상급자 화면과 동일한 3대 조치 지시 — 상황실에서도 직접 보낼 수 있도록
+    const SITUATION_DIRECTIVES = [
+      { key: "재지시대피", icon: "🚫", label: "작업중지 재지시 + 대피 요청", color: "#C53030",
+        defaultMsg: "[작업중지 재지시 및 대피 요청]\n\n작업중지를 재지시하고 2차 사고 예방을 위해\n모든 작업자의 즉각적인 대피를 요청합니다." },
+      { key: "현장보존", icon: "🔒", label: "현장 보존", color: "#276749",
+        defaultMsg: "[현장 보존 지시]\n\n사고 조사를 위한 현장 보존을 철저히 유지하시기 바랍니다." },
+      { key: "병원이송", icon: "🏥", label: "병원 이송", color: "#6B46C1",
+        defaultMsg: "[병원 이송 지시]\n\n부상자에 대한 즉각적인 응급조치 및 병원 이송을 지시합니다." },
+    ];
+
+    const handleSituationDirective = async (item) => {
+      if (!selectedAccident) return;
+      if (!window.confirm(`'${item.label}' 지시를 전송하시겠습니까?`)) return;
+      await supabase.from("directives").insert({
+        accident_id: selectedAccident.id,
+        action_key: item.key,
+        action_label: item.label,
+        message: item.defaultMsg,
+        supervisor_name: currentUser?.name || "안전 상황실",
+      });
+      loadSharedTimeline(selectedAccident.id);
+    };
+
     const handleDispatch = async () => {
-      if (!selectedMember) return;
-      const time = nowHHMM();
-      const text = selectedMember.name + " 출동 지시" + (accMin ? " — 사고장소 " + accMin + "분" : "") + (hospMin ? " / 병원 " + hospMin + "분" : "");
-      setTlEvents(prev => [...prev, { time, text, color: "#185FA5" }]);
+      if (!selectedMember || !selectedAccident) return;
       setDispatchedMembers(prev => ({ ...prev, [selectedMember.id]: true }));
       setSelectedMember(null);
       setAccMin("");
       setHospMin("");
       await supabase.from("dispatches").insert({
-        accident_id: "2024-0625-001",
+        accident_id: selectedAccident.id,
         dispatcher_name: selectedMember.name,
-        dispatcher_role: selectedMember.role,
+        dispatcher_role: "상황실",
         accident_minutes: accMin ? parseInt(accMin) : null,
         hospital_minutes: hospMin ? parseInt(hospMin) : null,
       });
+      // 방금 등록한 출동 지시까지 포함해서 타임라인 다시 불러오기
+      loadSharedTimeline(selectedAccident.id);
     };
 
-    const handleAddStaff = async () => {
+    const handleSaveStaff = async () => {
       if (!newStaff.name || !newStaff.phone) return;
-      const { error } = await supabase.from("users").insert({
+      const payload = {
         name: newStaff.name,
         phone: newStaff.phone.replace(/-/g, ""),
         role: newStaff.role,
         team: newStaff.team,
-        position: newStaff.position,
         work_type: newStaff.work_type || null,
-        is_active: true,
-      });
-      if (!error) {
-        setNewStaff({ name: "", phone: "", role: "worker", team: "", position: "", work_type: "유지보수" });
-        setShowAddStaff(false);
-        loadStaff();
+      };
+      const { error } = editingStaffId
+        ? await supabase.from("users").update(payload).eq("id", editingStaffId)
+        : await supabase.from("users").insert({ ...payload, is_active: true });
+      if (error) {
+        console.error("직원 저장 실패:", error);
+        alert("직원 정보 저장에 실패했습니다: " + error.message);
+        return;
       }
+      setNewStaff({ name: "", phone: "", role: "worker", team: "", work_type: "유지보수" });
+      setShowAddStaff(false);
+      setEditingStaffId(null);
+      loadStaff();
+      loadStaffTeamMap(); // 방금 추가/수정한 직원의 소속팀도 즉시 반영되도록
     };
 
-    const handleDeleteStaff = async (id) => {
-      await supabase.from("users").update({ is_active: false }).eq("id", id);
-      loadStaff();
+    const handleEditStaff = (s) => {
+      setNewStaff({
+        name: s.name || "", phone: s.phone || "", role: s.role || "worker",
+        team: s.team || "", work_type: s.work_type || "유지보수",
+      });
+      setEditingStaffId(s.id);
+      setShowAddStaff(true);
     };
+
+    // 사고 목록에서 삭제 — 실제로 지우지 않고 is_deleted만 표시. 작업자/상급자/사고현황엔 안 보이지만 사고 이력엔 남음
+    const handleDeleteAccident = async (id) => {
+      if (!window.confirm("이 사고를 목록에서 삭제하시겠습니까?\n삭제해도 사고 이력에서는 계속 조회할 수 있습니다.")) return;
+      const { error } = await supabase.from("accident_reports").update({ is_deleted: true }).eq("id", id);
+      if (error) {
+        console.error("사고 삭제 실패:", error);
+        alert("삭제에 실패했습니다: " + error.message);
+        return;
+      }
+      setAccidentReports(prev => prev.map(a => a.id === id ? { ...a, is_deleted: true } : a));
+      if (selectedAccident?.id === id) setSelectedAccident(null);
+    };
+
+    // 사고 이력에서 완전 삭제 — 되돌릴 수 없음 (직접 연결된 지시/출동 기록까지 함께 제거)
+    const handlePermanentlyDeleteAccident = async (id) => {
+      if (!window.confirm("이 사고 기록을 영구적으로 삭제하시겠습니까?\n이 작업은 되돌릴 수 없으며, 관련된 지시·출동 기록도 함께 삭제됩니다.")) return;
+      const { error } = await supabase.from("accident_reports").delete().eq("id", id);
+      if (error) {
+        console.error("사고 영구 삭제 실패:", error);
+        alert("영구 삭제에 실패했습니다: " + error.message);
+        return;
+      }
+      // 연결된 지시/출동 기록도 함께 정리 (실패해도 사고 자체는 이미 삭제된 상태)
+      supabase.from("directives").delete().eq("accident_id", id).then(() => {});
+      supabase.from("dispatches").delete().eq("accident_id", id).then(() => {});
+      setAccidentReports(prev => prev.filter(a => a.id !== id));
+      if (selectedAccident?.id === id) setSelectedAccident(null);
+    };
+
+    const handleSetStaffActive = async (id, active) => {
+      await supabase.from("users").update({ is_active: active }).eq("id", id);
+      loadStaff();
+      loadStaffTeamMap();
+    };
+
+    // 소속팀별로 묶어서 표시 — 팀 미지정은 "미지정"으로 그룹
+    const staffByTeam = staffList.reduce((groups, s) => {
+      const key = s.team || "미지정";
+      (groups[key] = groups[key] || []).push(s);
+      return groups;
+    }, {});
 
     const ROLE_LABEL = { worker: "현장 작업자", supervisor: "상급자", situation: "상황실" };
 
     return (
       <div style={{ display: "flex", height: "100vh", fontFamily: "'Apple SD Gothic Neo', sans-serif", background: "#F7F8FC" }}>
-        <GlobalOverlay />
+        {GlobalOverlay()}
 
         {/* 사이드바 */}
         <div style={{ width: 200, background: "#1A365D", display: "flex", flexDirection: "column", flexShrink: 0 }}>
@@ -3087,7 +3310,7 @@ export default function App() {
             <div style={{ fontSize: 11, color: "rgba(255,255,255,0.6)", marginTop: 3 }}>SK O&S 중대재해 대응</div>
           </div>
           {["사고 현황", "직원 관리", "사고 이력", "비상 연락망", "보고서 출력", "설정"].map(label => (
-            <div key={label} onClick={() => { if(label === "사고 현황" || label === "직원 관리") setSituationTab(label); }} style={{
+            <div key={label} onClick={() => { if(label === "사고 현황" || label === "직원 관리" || label === "사고 이력") setSituationTab(label); }} style={{
               padding: "10px 16px", fontSize: 13, cursor: "pointer",
               background: situationTab === label ? "rgba(255,255,255,0.15)" : "none",
               color: situationTab === label ? "#fff" : "rgba(255,255,255,0.6)",
@@ -3107,14 +3330,14 @@ export default function App() {
           {/* 상단바 */}
           <div style={{ padding: "12px 20px", background: "#fff", borderBottom: "1px solid #E2E8F0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div style={{ fontSize: 15, fontWeight: 700, color: "#111" }}>
-              {situationTab === "직원 관리" ? "직원 관리" : "실시간 사고 현황"}
+              {situationTab === "직원 관리" ? "직원 관리" : situationTab === "사고 이력" ? "사고 이력" : "실시간 사고 현황"}
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               {situationTab === "사고 현황" && (
                 <button onClick={loadSituationReports} style={{ fontSize: 12, padding: "4px 12px", cursor: "pointer" }}>새로고침</button>
               )}
               {situationTab === "직원 관리" && (
-                <button onClick={() => setShowAddStaff(true)} style={{ fontSize: 12, padding: "4px 12px", background: "#E53E3E", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", fontWeight: 700 }}>+ 직원 추가</button>
+                <button onClick={() => { setEditingStaffId(null); setNewStaff({ name: "", phone: "", role: "worker", team: "", work_type: "유지보수" }); setShowAddStaff(true); }} style={{ fontSize: 12, padding: "4px 12px", background: "#E53E3E", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", fontWeight: 700 }}>+ 직원 추가</button>
               )}
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#38A169" }} />
@@ -3129,7 +3352,7 @@ export default function App() {
               {/* 직원 추가 폼 */}
               {showAddStaff && (
                 <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 12, padding: 16, marginBottom: 16 }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: "#111", marginBottom: 12 }}>직원 추가</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: "#111", marginBottom: 12 }}>{editingStaffId ? "직원 정보 수정" : "직원 추가"}</div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 10 }}>
                     <div>
                       <div style={{ fontSize: 12, color: "#888", marginBottom: 4 }}>이름 *</div>
@@ -3160,44 +3383,115 @@ export default function App() {
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: 8 }}>
-                    <button onClick={() => setShowAddStaff(false)} style={{ padding: "8px 16px", border: "1px solid #ddd", borderRadius: 6, fontSize: 13, cursor: "pointer", background: "#fff" }}>취소</button>
-                    <button onClick={handleAddStaff} style={{ padding: "8px 16px", background: "#E53E3E", border: "none", borderRadius: 6, fontSize: 13, fontWeight: 700, color: "#fff", cursor: "pointer" }}>저장</button>
+                    <button onClick={() => { setShowAddStaff(false); setEditingStaffId(null); setNewStaff({ name: "", phone: "", role: "worker", team: "", work_type: "유지보수" }); }} style={{ padding: "8px 16px", border: "1px solid #ddd", borderRadius: 6, fontSize: 13, cursor: "pointer", background: "#fff" }}>취소</button>
+                    <button onClick={handleSaveStaff} style={{ padding: "8px 16px", background: "#E53E3E", border: "none", borderRadius: 6, fontSize: 13, fontWeight: 700, color: "#fff", cursor: "pointer" }}>{editingStaffId ? "수정 저장" : "저장"}</button>
                   </div>
                 </div>
               )}
 
-              {/* 직원 목록 */}
+              {/* 직원 목록 — 소속팀별로 그룹핑 */}
+              {staffList.length === 0 ? (
+                <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 12, padding: "20px", textAlign: "center", color: "#aaa", fontSize: 13 }}>
+                  직원을 불러오는 중...
+                </div>
+              ) : (
+                Object.entries(staffByTeam).map(([team, members]) => (
+                  <div key={team} style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 12, overflow: "hidden", marginBottom: 14 }}>
+                    <div style={{ padding: "10px 14px", background: "#F7FAFC", borderBottom: "1px solid #E2E8F0", fontSize: 13, fontWeight: 700, color: "#111" }}>
+                      🏷️ {team} <span style={{ color: "#888", fontWeight: 400 }}>({members.length}명)</span>
+                    </div>
+                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                      <thead>
+                        <tr style={{ borderBottom: "1px solid #E2E8F0" }}>
+                          {["이름", "핸드폰", "역할", "업무유형", "상태", "관리"].map(h => (
+                            <th key={h} style={{ padding: "8px 14px", fontSize: 11, fontWeight: 700, color: "#888", textAlign: "left" }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {members.map((s, i) => (
+                          <tr key={s.id} style={{ borderBottom: "1px solid #F7F7F7", background: i % 2 === 0 ? "#fff" : "#FAFAFA", opacity: s.is_active ? 1 : 0.5 }}>
+                            <td style={{ padding: "10px 14px", fontSize: 13, fontWeight: 700, color: "#111" }}>{s.name}</td>
+                            <td style={{ padding: "10px 14px", fontSize: 13, color: "#555" }}>{s.phone?.replace(/(d{3})(d{4})(d{4})/, "$1-$2-$3")}</td>
+                            <td style={{ padding: "10px 14px" }}>
+                              <span style={{
+                                fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 10,
+                                background: s.role === "worker" ? "#FFF5F5" : s.role === "supervisor" ? "#EBF8FF" : "#F0FFF4",
+                                color: s.role === "worker" ? "#C53030" : s.role === "supervisor" ? "#2B6CB0" : "#276749",
+                              }}>{ROLE_LABEL[s.role]}</span>
+                            </td>
+                            <td style={{ padding: "10px 14px", fontSize: 13, color: "#555" }}>{s.work_type || "-"}</td>
+                            <td style={{ padding: "10px 14px" }}>
+                              <span style={{
+                                fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 10,
+                                background: s.is_active ? "#F0FFF4" : "#F7FAFC",
+                                color: s.is_active ? "#276749" : "#888",
+                                border: s.is_active ? "1px solid #9AE6B4" : "1px solid #E2E8F0",
+                              }}>{s.is_active ? "활성" : "비활성"}</span>
+                            </td>
+                            <td style={{ padding: "10px 14px", display: "flex", gap: 6 }}>
+                              <button onClick={() => handleEditStaff(s)} style={{ fontSize: 11, padding: "3px 10px", background: "#EBF8FF", color: "#2B6CB0", border: "1px solid #BEE3F8", borderRadius: 6, cursor: "pointer" }}>수정</button>
+                              <button
+                                disabled={s.is_active}
+                                onClick={() => handleSetStaffActive(s.id, true)}
+                                style={{ fontSize: 11, padding: "3px 10px", background: "#F0FFF4", color: "#276749", border: "1px solid #9AE6B4", borderRadius: 6, cursor: s.is_active ? "default" : "pointer", opacity: s.is_active ? 0.4 : 1 }}
+                              >활성화</button>
+                              <button
+                                disabled={!s.is_active}
+                                onClick={() => handleSetStaffActive(s.id, false)}
+                                style={{ fontSize: 11, padding: "3px 10px", background: "#FFF5F5", color: "#C53030", border: "1px solid #FED7D7", borderRadius: 6, cursor: !s.is_active ? "default" : "pointer", opacity: !s.is_active ? 0.4 : 1 }}
+                              >비활성화</button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
+          {/* 사고 이력 탭 — 삭제된 사고도 포함해서 전체 기록 조회 */}
+          {situationTab === "사고 이력" && (
+            <div style={{ flex: 1, overflowY: "auto", padding: 20 }}>
               <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 12, overflow: "hidden" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead>
                     <tr style={{ background: "#F7FAFC", borderBottom: "1px solid #E2E8F0" }}>
-                      {["이름", "핸드폰", "역할", "소속팀", "업무유형", "관리"].map(h => (
+                      {["사고 일시", "유형", "장소", "작업자", "상태", "관리"].map(h => (
                         <th key={h} style={{ padding: "10px 14px", fontSize: 12, fontWeight: 700, color: "#888", textAlign: "left" }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {staffList.length === 0 ? (
-                      <tr><td colSpan={7} style={{ padding: "20px", textAlign: "center", color: "#aaa", fontSize: 13 }}>직원을 불러오는 중...</td></tr>
+                    {accidentReports.length === 0 ? (
+                      <tr><td colSpan={6} style={{ padding: "20px", textAlign: "center", color: "#aaa", fontSize: 13 }}>사고 기록이 없습니다.</td></tr>
                     ) : (
-                      staffList.map((s, i) => (
-                        <tr key={s.id} style={{ borderBottom: "1px solid #F7F7F7", background: i % 2 === 0 ? "#fff" : "#FAFAFA" }}>
-                          <td style={{ padding: "10px 14px", fontSize: 13, fontWeight: 700, color: "#111" }}>{s.name}</td>
-                          <td style={{ padding: "10px 14px", fontSize: 13, color: "#555" }}>{s.phone?.replace(/(d{3})(d{4})(d{4})/, "$1-$2-$3")}</td>
-                          <td style={{ padding: "10px 14px" }}>
-                            <span style={{
-                              fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 10,
-                              background: s.role === "worker" ? "#FFF5F5" : s.role === "supervisor" ? "#EBF8FF" : "#F0FFF4",
-                              color: s.role === "worker" ? "#C53030" : s.role === "supervisor" ? "#2B6CB0" : "#276749",
-                            }}>{ROLE_LABEL[s.role]}</span>
-                          </td>
-                          <td style={{ padding: "10px 14px", fontSize: 13, color: "#555" }}>{s.team || "-"}</td>
-                          <td style={{ padding: "10px 14px", fontSize: 13, color: "#555" }}>{s.work_type || "-"}</td>
-                          <td style={{ padding: "10px 14px" }}>
-                            <button onClick={() => handleDeleteStaff(s.id)} style={{ fontSize: 11, padding: "3px 10px", background: "#FFF5F5", color: "#C53030", border: "1px solid #FED7D7", borderRadius: 6, cursor: "pointer" }}>비활성화</button>
-                          </td>
-                        </tr>
-                      ))
+                      [...accidentReports]
+                        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+                        .map((acc, i) => (
+                          <tr key={acc.id} style={{ borderBottom: "1px solid #F7F7F7", background: i % 2 === 0 ? "#fff" : "#FAFAFA", opacity: acc.is_deleted ? 0.5 : 1 }}>
+                            <td style={{ padding: "10px 14px", fontSize: 13, color: "#555" }}>{acc.created_at ? new Date(acc.created_at).toLocaleString("ko-KR") : "-"}</td>
+                            <td style={{ padding: "10px 14px", fontSize: 13, fontWeight: 700, color: "#111" }}>{acc.accident_type}{acc.is_deleted && <span style={{ marginLeft: 6, fontSize: 10, color: "#C53030", fontWeight: 700 }}>(삭제됨)</span>}</td>
+                            <td style={{ padding: "10px 14px", fontSize: 13, color: "#555" }}>{acc.location}</td>
+                            <td style={{ padding: "10px 14px", fontSize: 13, color: "#555" }}>{staffTeamMap[acc.worker_name] ? staffTeamMap[acc.worker_name] + " · " : ""}{acc.worker_name}</td>
+                            <td style={{ padding: "10px 14px" }}>
+                              <span style={{
+                                fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 10,
+                                background: acc.status === "완료" ? "#F0FFF4" : "#FFF5F5",
+                                color: acc.status === "완료" ? "#276749" : "#C53030",
+                              }}>{acc.status || "진행중"}</span>
+                            </td>
+                            <td style={{ padding: "10px 14px" }}>
+                              <button
+                                onClick={() => handlePermanentlyDeleteAccident(acc.id)}
+                                title="영구 삭제"
+                                style={{ background: "#FFF5F5", border: "1px solid #FED7D7", borderRadius: 6, color: "#C53030", fontSize: 12, padding: "4px 10px", cursor: "pointer" }}
+                              >🗑️ 영구 삭제</button>
+                            </td>
+                          </tr>
+                        ))
                     )}
                   </tbody>
                 </table>
@@ -3213,20 +3507,27 @@ export default function App() {
                 <div style={{ padding: "10px 14px", borderBottom: "1px solid #E2E8F0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span style={{ fontWeight: 700, fontSize: 13, color: "#111" }}>사고 목록</span>
                 </div>
-                {accidentReports.length === 0 ? (
+                {accidentReports.filter(a => !a.is_deleted).length === 0 ? (
                   <div style={{ padding: "20px 14px", fontSize: 13, color: "#aaa", textAlign: "center" }}>사고 없음</div>
                 ) : (
-                  accidentReports.map(acc => (
+                  accidentReports.filter(a => !a.is_deleted).map(acc => (
                     <div key={acc.id} onClick={() => setSelectedAccident(acc)} style={{
                       padding: "12px 14px", borderBottom: "1px solid #E2E8F0", cursor: "pointer",
                       background: selectedAccident?.id === acc.id ? "#EBF8FF" : "#fff",
                     }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
                         <span style={{ fontWeight: 700, fontSize: 13, color: "#111" }}>{acc.accident_type} 사고</span>
-                        <span style={{ background: acc.status === "완료" ? "#F0FFF4" : "#FFF5F5", color: acc.status === "완료" ? "#276749" : "#C53030", fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 20, border: acc.status === "완료" ? "1px solid #9AE6B4" : "1px solid #FED7D7" }}>{acc.status || "진행중"}</span>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <span style={{ background: acc.status === "완료" ? "#F0FFF4" : "#FFF5F5", color: acc.status === "완료" ? "#276749" : "#C53030", fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 20, border: acc.status === "완료" ? "1px solid #9AE6B4" : "1px solid #FED7D7" }}>{acc.status || "진행중"}</span>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleDeleteAccident(acc.id); }}
+                            title="삭제"
+                            style={{ background: "none", border: "none", color: "#CBD5E0", fontSize: 13, cursor: "pointer", padding: 2 }}
+                          >🗑️</button>
+                        </div>
                       </div>
                       <div style={{ fontSize: 11, color: "#888", lineHeight: 1.6 }}>
-                        {acc.team || "충청1팀"} · {acc.worker_name} · {acc.work_type}<br />{acc.location}
+                        {staffTeamMap[acc.worker_name] || "미지정"} · {acc.worker_name} · {acc.work_type}<br />{acc.location}
                       </div>
                     </div>
                   ))
@@ -3235,31 +3536,100 @@ export default function App() {
 
               {/* 상세 패널 */}
               <div style={{ flex: 1, overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+                {/* 사고 상세 정보 */}
+                <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 12, padding: 14 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#111", marginBottom: 10 }}>📋 사고 상세 정보</div>
+                  <div style={{ background: "#FAFAFA", borderRadius: 10, padding: "12px" }}>
+                    {[
+                      ["사고 일시", selectedAccident?.created_at ? new Date(selectedAccident.created_at).toLocaleString("ko-KR") : "-"],
+                      ["사고 장소", selectedAccident?.location || "-"],
+                      ["사고 유형", selectedAccident?.accident_type || "-"],
+                      ["사고 내용", selectedAccident?.content || "-"],
+                      ["작업자", selectedAccident ? `${staffTeamMap[selectedAccident.worker_name] ? staffTeamMap[selectedAccident.worker_name] + " · " : ""}${selectedAccident.worker_name || "-"}` : "-"],
+                    ].map(([k, v]) => (
+                      <div key={k} style={{ display: "flex", gap: 12, padding: "5px 0", fontSize: 13 }}>
+                        <span style={{ color: "#888", minWidth: 60, flexShrink: 0 }}>{k}</span>
+                        <span style={{ color: "#111", fontWeight: 500 }}>{v}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {/* 첨부 사진 — 클릭하면 확대 */}
+                  <div style={{ marginTop: 10 }}>
+                    <div style={{ fontSize: 12, color: "#888", marginBottom: 6 }}>첨부 사진</div>
+                    {(selectedAccident?.photo_urls || []).length === 0 ? (
+                      <div style={{ fontSize: 12, color: "#aaa" }}>등록된 사진이 없습니다.</div>
+                    ) : (
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        {selectedAccident.photo_urls.map((url, i) => (
+                          <img
+                            key={i}
+                            src={url}
+                            alt={`첨부 사진 ${i + 1}`}
+                            onClick={() => setLightboxUrl(url)}
+                            style={{ width: 80, height: 62, objectFit: "cover", borderRadius: 8, cursor: "pointer", border: "1px solid #E2E8F0" }}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 조치 지시 — 상급자와 동일하게 상황실에서도 직접 지시 가능 */}
+                <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 12, padding: 14 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#111", marginBottom: 10 }}>🚨 조치 지시</div>
+                  {SITUATION_DIRECTIVES.map(item => {
+                    const done = !!directiveStatus[item.key];
+                    return (
+                      <div key={item.key} style={{
+                        display: "flex", alignItems: "center", justifyContent: "space-between",
+                        padding: "8px 0", borderBottom: "1px solid #F7F7F7",
+                      }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ fontSize: 15 }}>{item.icon}</span>
+                          <span style={{ fontSize: 13, color: "#333" }}>{item.label}</span>
+                        </div>
+                        <button
+                          disabled={!selectedAccident || done}
+                          onClick={() => handleSituationDirective(item)}
+                          style={{
+                            background: done ? "#F0FFF4" : "#fff",
+                            border: `1px solid ${done ? "#9AE6B4" : "#FCA5A5"}`,
+                            borderRadius: 6, padding: "4px 10px", fontSize: 12,
+                            color: done ? "#2F855A" : "#C53030",
+                            cursor: done || !selectedAccident ? "default" : "pointer", fontWeight: 600,
+                          }}
+                        >{done ? "✓ 완료" : "지시하기"}</button>
+                      </div>
+                    );
+                  })}
+                </div>
+
                 {/* 출동 지정 */}
                 <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 12, padding: 14 }}>
                   <div style={{ fontSize: 13, fontWeight: 700, color: "#111", marginBottom: 10 }}>출동 지정</div>
-                  {["안전관리자", "공사감독자"].map(role => (
-                    <div key={role}>
-                      <div style={{ fontSize: 11, color: "#888", fontWeight: 700, marginBottom: 6 }}>{role}</div>
-                      {MEMBERS.filter(m => m.role === role).map(m => (
-                        <div key={m.id} onClick={() => !dispatchedMembers[m.id] && setSelectedMember(m)} style={{
-                          display: "flex", alignItems: "center", justifyContent: "space-between",
-                          padding: "8px 10px", borderRadius: 8, cursor: dispatchedMembers[m.id] ? "default" : "pointer",
-                          border: "1px solid " + (selectedMember?.id === m.id ? "#2B6CB0" : dispatchedMembers[m.id] ? "#9AE6B4" : "#E2E8F0"),
-                          background: selectedMember?.id === m.id ? "#EBF8FF" : dispatchedMembers[m.id] ? "#F0FFF4" : "#fff",
-                          marginBottom: 6,
-                        }}>
-                          <div>
-                            <div style={{ fontSize: 13, fontWeight: 700, color: "#111" }}>{m.name}</div>
-                            <div style={{ fontSize: 11, color: "#888" }}>{m.role} · {m.phone}</div>
-                          </div>
-                          <span style={{ fontSize: 12, fontWeight: 700, color: dispatchedMembers[m.id] ? "#276749" : selectedMember?.id === m.id ? "#2B6CB0" : "#aaa" }}>
-                            {dispatchedMembers[m.id] ? "출동중" : selectedMember?.id === m.id ? "선택됨" : "클릭하여 선택"}
-                          </span>
-                        </div>
-                      ))}
+                  {staffList.filter(s => s.role === "situation" && s.is_active).length === 0 ? (
+                    <div style={{ fontSize: 12, color: "#aaa", padding: "10px 0" }}>
+                      등록된 상황실 직원이 없습니다. "직원 관리"에서 역할을 "상황실"로 추가해주세요.
                     </div>
-                  ))}
+                  ) : (
+                    staffList.filter(s => s.role === "situation" && s.is_active).map(m => (
+                      <div key={m.id} onClick={() => !dispatchedMembers[m.id] && setSelectedMember(m)} style={{
+                        display: "flex", alignItems: "center", justifyContent: "space-between",
+                        padding: "8px 10px", borderRadius: 8, cursor: dispatchedMembers[m.id] ? "default" : "pointer",
+                        border: "1px solid " + (selectedMember?.id === m.id ? "#2B6CB0" : dispatchedMembers[m.id] ? "#9AE6B4" : "#E2E8F0"),
+                        background: selectedMember?.id === m.id ? "#EBF8FF" : dispatchedMembers[m.id] ? "#F0FFF4" : "#fff",
+                        marginBottom: 6,
+                      }}>
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: "#111" }}>{m.name}</div>
+                          <div style={{ fontSize: 11, color: "#888" }}>{m.team ? m.team + " · " : ""}{m.phone}</div>
+                        </div>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: dispatchedMembers[m.id] ? "#276749" : selectedMember?.id === m.id ? "#2B6CB0" : "#aaa" }}>
+                          {dispatchedMembers[m.id] ? "출동중" : selectedMember?.id === m.id ? "선택됨" : "클릭하여 선택"}
+                        </span>
+                      </div>
+                    ))
+                  )}
                   {selectedMember && (
                     <div style={{ marginTop: 10, padding: 12, background: "#EBF8FF", borderRadius: 8, border: "1px solid #90CDF4" }}>
                       <div style={{ fontSize: 12, fontWeight: 700, color: "#2B6CB0", marginBottom: 10 }}>{selectedMember.name} 출동 설정</div>
@@ -3307,22 +3677,24 @@ export default function App() {
                 <button
                   onClick={async () => {
                     if(!window.confirm("상황을 종료하시겠습니까?")) return;
-                    // 사고 status 완료로 변경
+                    if (!selectedAccident) return;
+                    // 선택된 사고만 status 완료로 변경 (다른 진행중 사고에는 영향 없음)
                     await supabase.from("accident_reports")
                       .update({ status: "완료" })
-                      .eq("status", "진행중");
-                    // 작업자/상급자에게 알람
+                      .eq("id", selectedAccident.id);
+                    // 해당 사고의 작업자/상급자에게만 알람
                     await supabase.from("directives").insert({
-                      accident_id: "2024-0625-001",
+                      accident_id: selectedAccident.id,
                       action_key: "상황종료",
                       action_label: "상황 종료",
                       message: "모든 조치가 완료되었습니다. 상황을 종료합니다.",
                       supervisor_name: "안전 상황실",
                     });
                     // 사고 목록 갱신 - state 즉시 업데이트
-                    setAccidentReports(prev => prev.map(a => 
-                      a.status === "진행중" ? {...a, status: "완료"} : a
+                    setAccidentReports(prev => prev.map(a =>
+                      a.id === selectedAccident.id ? {...a, status: "완료"} : a
                     ));
+                    setSelectedAccident(prev => prev ? {...prev, status: "완료"} : prev);
                   }}
                   style={{
                     width: "100%", padding: "14px", background: "#1A365D",
@@ -3349,9 +3721,7 @@ export default function App() {
     const directiveDone = Object.values(acc.directives).filter(Boolean).length;
 
     return (
-      <div style={{ ...styles.phone, background: "#F7F8FC" }}>
-        <div style={{ ...styles.statusBar, background: "#fff" }}><span>9:41</span><span>📶 </span></div>
-
+      <div style={{ ...styles.phone, background: "#F7F8FC" }}>{GlobalOverlay()}
         {/* 헤더 */}
         <div style={{
           background: "#1A365D", padding: "12px 16px 14px",
@@ -3591,7 +3961,6 @@ export default function App() {
   if (screen === SCREENS.SMS) {
     return (
       <div style={{ ...styles.phone, background: "#F7F8FC" }}>
-        <div style={{ ...styles.statusBar, background: "#fff" }}><span>9:41</span><span>📶 </span></div>
         <div style={{
           background: "#fff", padding: "16px 20px 12px",
           borderBottom: "1px solid #EFEFEF", textAlign: "center",
@@ -3640,8 +4009,8 @@ export default function App() {
   // 알림 배너/팝업은 모든 화면 위에 표시
   return (
     <>
-      <NotifBanner />
-      <NotifPopup />
+      {NotifBanner()}
+      {NotifPopup()}
     </>
   );
 }
