@@ -286,7 +286,9 @@ export default function App() {
   const [hospitalName, setHospitalName] = useState(""); // 이송 병원 이름 — 보고현황 화면에서 언제든 입력/수정
   const [situationShareType, setSituationShareType] = useState(null); // null | "TBM확인공유" | "피재자상태공유" | "추가공유"
   const [dispatchTeamFilter, setDispatchTeamFilter] = useState("전체"); // 출동 지정 목록 팀별 필터
+  const [dispatchSearch, setDispatchSearch] = useState(""); // 출동 지정 목록 이름 검색
   const [collapsedStaffTeams, setCollapsedStaffTeams] = useState({}); // 직원 관리 목록 - 팀별 접기/펼치기
+  const [collapsedStaffRoles, setCollapsedStaffRoles] = useState({}); // 직원 관리 목록 - 팀 안 역할별 접기/펼치기 (key: `${team}::${role}`)
   const [selectedHistoryIds, setSelectedHistoryIds] = useState({}); // 사고 이력 - 체크박스로 선택된 항목들
   const [selectedReportIds, setSelectedReportIds] = useState({}); // 보고서 출력 탭 - 체크박스로 선택된 항목들
   const [workerHomeFilter, setWorkerHomeFilter] = useState("진행중"); // 작업자 홈 사고현황 - 전체/진행중/완료 필터
@@ -4059,58 +4061,76 @@ export default function App() {
                       <span>🏷️ {team} <span style={{ color: "#888", fontWeight: 400 }}>({members.length}명)</span></span>
                       <span style={{ color: "#888", fontSize: 11, transform: isCollapsed ? "rotate(-90deg)" : "none", display: "inline-block", transition: "transform 0.15s" }}>▼</span>
                     </div>
-                    {!isCollapsed && (
-                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                      <thead>
-                        <tr style={{ borderBottom: "1px solid #E2E8F0" }}>
-                          {["이름", "핸드폰", "역할", "업무유형", "상태", "관리"].map(h => (
-                            <th key={h} style={{ padding: "8px 14px", fontSize: 11, fontWeight: 700, color: "#888", textAlign: "left" }}>{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {members.map((s, i) => (
-                          <tr key={s.id} style={{ borderBottom: "1px solid #F7F7F7", background: i % 2 === 0 ? "#fff" : "#FAFAFA", opacity: s.is_active ? 1 : 0.5 }}>
-                            <td style={{ padding: "10px 14px", fontSize: 13, fontWeight: 700, color: "#111" }}>{s.name}</td>
-                            <td style={{ padding: "10px 14px", fontSize: 13, color: "#555" }}>{s.phone?.replace(/(d{3})(d{4})(d{4})/, "$1-$2-$3")}</td>
-                            <td style={{ padding: "10px 14px" }}>
-                              <span style={{
-                                fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 10,
-                                background: s.role === "worker" ? "#FFF5F5" : s.role === "supervisor" ? "#EBF8FF" : "#F0FFF4",
-                                color: s.role === "worker" ? "#C53030" : s.role === "supervisor" ? "#2B6CB0" : "#276749",
-                              }}>{ROLE_LABEL[s.role]}</span>
-                            </td>
-                            <td style={{ padding: "10px 14px", fontSize: 13, color: "#555" }}>{s.work_type || "-"}</td>
-                            <td style={{ padding: "10px 14px" }}>
-                              <span style={{
-                                fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 10,
-                                background: s.is_active ? "#F0FFF4" : "#F7FAFC",
-                                color: s.is_active ? "#276749" : "#888",
-                                border: s.is_active ? "1px solid #9AE6B4" : "1px solid #E2E8F0",
-                              }}>{s.is_active ? "활성" : "비활성"}</span>
-                            </td>
-                            <td style={{ padding: "10px 14px", display: "flex", gap: 6 }}>
-                              <button onClick={() => handleEditStaff(s)} style={{ fontSize: 11, padding: "3px 10px", background: "#EBF8FF", color: "#2B6CB0", border: "1px solid #BEE3F8", borderRadius: 6, cursor: "pointer" }}>수정</button>
-                              <button
-                                disabled={s.is_active}
-                                onClick={() => handleSetStaffActive(s.id, true)}
-                                style={{ fontSize: 11, padding: "3px 10px", background: "#F0FFF4", color: "#276749", border: "1px solid #9AE6B4", borderRadius: 6, cursor: s.is_active ? "default" : "pointer", opacity: s.is_active ? 0.4 : 1 }}
-                              >활성화</button>
-                              <button
-                                disabled={!s.is_active}
-                                onClick={() => handleSetStaffActive(s.id, false)}
-                                style={{ fontSize: 11, padding: "3px 10px", background: "#FFF5F5", color: "#C53030", border: "1px solid #FED7D7", borderRadius: 6, cursor: !s.is_active ? "default" : "pointer", opacity: !s.is_active ? 0.4 : 1 }}
-                              >비활성화</button>
-                              <button
-                                onClick={() => handleDeleteStaffMember(s)}
-                                style={{ fontSize: 11, padding: "3px 10px", background: "#fff", color: "#888", border: "1px solid #E2E8F0", borderRadius: 6, cursor: "pointer" }}
-                              >삭제</button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    )}
+                    {!isCollapsed && (() => {
+                      const byRole = members.reduce((g, s) => {
+                        (g[s.role] = g[s.role] || []).push(s);
+                        return g;
+                      }, {});
+                      const roleOrder = ["situation", "supervisor", "worker"];
+                      return roleOrder.filter(r => byRole[r]).map(role => {
+                        const roleKey = `${team}::${role}`;
+                        const roleCollapsed = !!collapsedStaffRoles[roleKey];
+                        return (
+                        <div key={role} style={{ padding: "10px 14px 12px" }}>
+                          <div
+                            onClick={() => setCollapsedStaffRoles(prev => ({ ...prev, [roleKey]: !prev[roleKey] }))}
+                            style={{
+                              fontSize: 12, fontWeight: 700, color: "#888", marginBottom: 6, cursor: "pointer",
+                              userSelect: "none", display: "flex", alignItems: "center", gap: 6,
+                            }}
+                          >
+                            <span style={{ fontSize: 10, transform: roleCollapsed ? "rotate(-90deg)" : "none", display: "inline-block", transition: "transform 0.15s" }}>▼</span>
+                            {ROLE_LABEL[role]} <span style={{ fontWeight: 400 }}>({byRole[role].length}명)</span>
+                          </div>
+                          {!roleCollapsed && (
+                          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                            <thead>
+                              <tr style={{ borderBottom: "1px solid #E2E8F0" }}>
+                                {["이름", "핸드폰", "업무유형", "상태", "관리"].map(h => (
+                                  <th key={h} style={{ padding: "6px 10px", fontSize: 11, fontWeight: 700, color: "#888", textAlign: "left" }}>{h}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {byRole[role].map((s, i) => (
+                                <tr key={s.id} style={{ borderBottom: "1px solid #F7F7F7", background: i % 2 === 0 ? "#fff" : "#FAFAFA", opacity: s.is_active ? 1 : 0.5 }}>
+                                  <td style={{ padding: "8px 10px", fontSize: 13, fontWeight: 700, color: "#111" }}>{s.name}</td>
+                                  <td style={{ padding: "8px 10px", fontSize: 13, color: "#555" }}>{s.phone?.replace(/(d{3})(d{4})(d{4})/, "$1-$2-$3")}</td>
+                                  <td style={{ padding: "8px 10px", fontSize: 13, color: "#555" }}>{s.work_type || "-"}</td>
+                                  <td style={{ padding: "8px 10px" }}>
+                                    <span style={{
+                                      fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 10,
+                                      background: s.is_active ? "#F0FFF4" : "#F7FAFC",
+                                      color: s.is_active ? "#276749" : "#888",
+                                      border: s.is_active ? "1px solid #9AE6B4" : "1px solid #E2E8F0",
+                                    }}>{s.is_active ? "활성" : "비활성"}</span>
+                                  </td>
+                                  <td style={{ padding: "8px 10px", display: "flex", gap: 6 }}>
+                                    <button onClick={() => handleEditStaff(s)} style={{ fontSize: 11, padding: "3px 10px", background: "#EBF8FF", color: "#2B6CB0", border: "1px solid #BEE3F8", borderRadius: 6, cursor: "pointer" }}>수정</button>
+                                    <button
+                                      disabled={s.is_active}
+                                      onClick={() => handleSetStaffActive(s.id, true)}
+                                      style={{ fontSize: 11, padding: "3px 10px", background: "#F0FFF4", color: "#276749", border: "1px solid #9AE6B4", borderRadius: 6, cursor: s.is_active ? "default" : "pointer", opacity: s.is_active ? 0.4 : 1 }}
+                                    >활성화</button>
+                                    <button
+                                      disabled={!s.is_active}
+                                      onClick={() => handleSetStaffActive(s.id, false)}
+                                      style={{ fontSize: 11, padding: "3px 10px", background: "#FFF5F5", color: "#C53030", border: "1px solid #FED7D7", borderRadius: 6, cursor: !s.is_active ? "default" : "pointer", opacity: !s.is_active ? 0.4 : 1 }}
+                                    >비활성화</button>
+                                    <button
+                                      onClick={() => handleDeleteStaffMember(s)}
+                                      style={{ fontSize: 11, padding: "3px 10px", background: "#fff", color: "#888", border: "1px solid #E2E8F0", borderRadius: 6, cursor: "pointer" }}
+                                    >삭제</button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                          )}
+                        </div>
+                        );
+                      });
+                    })()}
                   </div>
                   );
                 })
@@ -4592,9 +4612,16 @@ export default function App() {
                   {(() => {
                     const dispatchable = staffList.filter(s => s.role === "situation" && s.is_active);
                     const teamOptions = ["전체", ...Array.from(new Set(dispatchable.map(s => s.team).filter(Boolean)))];
-                    const filtered = dispatchTeamFilter === "전체" ? dispatchable : dispatchable.filter(s => s.team === dispatchTeamFilter);
+                    const teamFiltered = dispatchTeamFilter === "전체" ? dispatchable : dispatchable.filter(s => s.team === dispatchTeamFilter);
+                    const filtered = dispatchSearch ? teamFiltered.filter(s => s.name.includes(dispatchSearch)) : teamFiltered;
                     return (
                       <>
+                        <input
+                          value={dispatchSearch}
+                          onChange={(e) => setDispatchSearch(e.target.value)}
+                          placeholder="이름으로 검색..."
+                          style={{ width: "100%", padding: "8px 10px", border: "1px solid #E2E8F0", borderRadius: 8, fontSize: 13, marginBottom: 8, boxSizing: "border-box" }}
+                        />
                         {teamOptions.length > 1 && (
                           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
                             {teamOptions.map(team => (
@@ -4615,6 +4642,8 @@ export default function App() {
                           <div style={{ fontSize: 12, color: "#aaa", padding: "10px 0" }}>
                             {dispatchable.length === 0
                               ? '등록된 상황실 직원이 없습니다. "직원 관리"에서 역할을 "상황실"로 추가해주세요.'
+                              : dispatchSearch
+                              ? "검색 결과가 없습니다."
                               : "해당 팀에 등록된 직원이 없습니다."}
                           </div>
                         ) : (
