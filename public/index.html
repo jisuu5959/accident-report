@@ -25,6 +25,9 @@
       Learn how to configure a non-root public URL by running `npm run build`.
     -->
     <title>React App</title>
+    <!-- docx 라이브러리 — npm 번들링 시 CRA 개발서버에서 export가 깨지는 문제가 있어
+         공식 브라우저용(IIFE) 빌드를 정적 스크립트로 직접 로드한다. window.docx로 접근. -->
+    <script src="%PUBLIC_URL%/docx.iife.js"></script>
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>

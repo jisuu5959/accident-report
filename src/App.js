@@ -1,6 +1,9 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@supabase/supabase-js";
+import * as XLSX from "xlsx";
+// docx는 npm 번들링 시 CRA 개발서버에서 export가 undefined로 깨지는 문제가 있어
+// public/index.html에서 공식 브라우저용(IIFE) 빌드를 <script>로 로드하고 window.docx로 사용한다.
 
 // ── Supabase 연결 설정 ──────────────────────────────────
 const supabase = createClient(
@@ -46,11 +49,62 @@ const RECIPIENTS_BY_TYPE = {
 };
 // ── 상급자 지시(action_key)별 작업자 긴급 조치 체크리스트 ──
 // 알림 팝업과 '긴급 조치 현황 입력' 화면이 이 설정을 함께 사용해서 항상 같은 항목을 보여준다.
+// ── 설정(PIN 관리) 진입용 관리자 비밀번호 — 필요 시 이 값만 바꾸면 됨 ──
+const ADMIN_SETTINGS_PASSWORD = "ons1234";
+
 const DIRECTIVE_CHECKLIST = {
   "재지시대피": { itemKey: "stop",      icon: "🚫", title: "작업 중지", question: "현장 모든 작업을 즉시 중지했습니까?", color: "#C53030", subItems: ["작업 중지", "장비 가동 중단", "작업자 대피 완료"] },
   "병원이송":   { itemKey: "report119", icon: "🚑", title: "119 신고", question: "119에 신고 및 연락했습니까?", color: "#2B6CB0", subItems: ["119 신고 완료", "응급조치 완료"] },
   "현장보존":   { itemKey: "control",   icon: "🚧", title: "현장 통제", question: "사고 구역 출입을 통제했습니까?", color: "#B7791F", subItems: ["외부인 접근 차단"] },
 };
+
+// ── 사고보고서(.docx) 생성용 헬퍼 ──────────────────────────
+const DOCX_PAGE_WIDTH = 11906; // A4, DXA
+const DOCX_MARGIN = 1000;
+const DOCX_CONTENT_WIDTH = DOCX_PAGE_WIDTH - DOCX_MARGIN * 2;
+const DOCX_NAVY = "1A365D";
+const DOCX_RED = "C53030";
+const DOCX_GREEN = "276749";
+const DOCX_GRAY_BG = "F2F2F2";
+const DOCX_BORDER = { style: "single", size: 4, color: "999999" };
+const DOCX_CELL_BORDERS = { top: DOCX_BORDER, bottom: DOCX_BORDER, left: DOCX_BORDER, right: DOCX_BORDER };
+
+function docxLabelCell(text, width, colSpan) {
+  return new window.docx.TableCell({
+    width: { size: width, type: "dxa" },
+    shading: { type: "clear", fill: DOCX_GRAY_BG },
+    verticalAlign: "center",
+    borders: DOCX_CELL_BORDERS,
+    columnSpan: colSpan || 1,
+    margins: { top: 80, bottom: 80, left: 120, right: 120 },
+    children: [new window.docx.Paragraph({ children: [new window.docx.TextRun({ text, bold: true, size: 19, font: "맑은 고딕" })] })],
+  });
+}
+function docxValueCell(text, width, opts = {}) {
+  return new window.docx.TableCell({
+    width: { size: width, type: "dxa" },
+    verticalAlign: "center",
+    borders: DOCX_CELL_BORDERS,
+    columnSpan: opts.colSpan || 1,
+    margins: { top: 80, bottom: 80, left: 120, right: 120 },
+    children: [new window.docx.Paragraph({
+      children: [new window.docx.TextRun({ text: text || "-", size: 19, font: "맑은 고딕", color: opts.color, bold: opts.bold })],
+    })],
+  });
+}
+function docxSectionHeading(num, title) {
+  return new window.docx.Paragraph({
+    spacing: { before: 320, after: 120 },
+    border: { bottom: { style: "single", size: 6, color: DOCX_NAVY, space: 4 } },
+    children: [new window.docx.TextRun({ text: `${num}. ${title}`, bold: true, size: 24, color: DOCX_NAVY, font: "맑은 고딕" })],
+  });
+}
+function docxBodyText(text, opts = {}) {
+  return new window.docx.Paragraph({
+    spacing: { after: 100 },
+    children: [new window.docx.TextRun({ text, size: 19, font: "맑은 고딕", color: opts.color, bold: opts.bold })],
+  });
+}
 
 const acidentTypes = [
   { id: "fall", label: "추락", icon: "🧗" },
@@ -140,7 +194,8 @@ export default function App() {
   // ── 로그인 state ──────────────────────────────────────
   const [loginStep, setLoginStep] = useState("phone");   // "phone" | "verify"
   const [phoneNum, setPhoneNum] = useState("");
-  const [verifyCode, setVerifyCode] = useState("");
+  const [verifyCode, setVerifyCode] = useState(""); // 이제 SMS 인증번호가 아니라 PIN 번호로 사용
+  const [pendingLoginUser, setPendingLoginUser] = useState(null); // 전화번호 확인 후 PIN 검증 대기 중인 사용자
   const [phoneError, setPhoneError] = useState("");
   const [verifyError, setVerifyError] = useState("");
   const [codeSent, setCodeSent] = useState(false);
@@ -229,6 +284,28 @@ export default function App() {
   const [isMock, setIsMock] = useState(false);
   const [mockCheck, setMockCheck] = useState({ stop: false, call119: false });
   const [hospitalName, setHospitalName] = useState(""); // 이송 병원 이름 — 보고현황 화면에서 언제든 입력/수정
+  const [situationShareType, setSituationShareType] = useState(null); // null | "TBM확인공유" | "피재자상태공유" | "추가공유"
+  const [dispatchTeamFilter, setDispatchTeamFilter] = useState("전체"); // 출동 지정 목록 팀별 필터
+  const [collapsedStaffTeams, setCollapsedStaffTeams] = useState({}); // 직원 관리 목록 - 팀별 접기/펼치기
+  const [selectedHistoryIds, setSelectedHistoryIds] = useState({}); // 사고 이력 - 체크박스로 선택된 항목들
+  const [selectedReportIds, setSelectedReportIds] = useState({}); // 보고서 출력 탭 - 체크박스로 선택된 항목들
+  const [workerHomeFilter, setWorkerHomeFilter] = useState("진행중"); // 작업자 홈 사고현황 - 전체/진행중/완료 필터
+  const [bulkReportProgress, setBulkReportProgress] = useState(null); // { current, total } | null
+  const [pinIssueResults, setPinIssueResults] = useState([]); // 설정 화면 - 방금 발급/초기화된 PIN 목록 (이름/전화번호/PIN)
+  const [settingsUnlocked, setSettingsUnlocked] = useState(false); // 설정(PIN 관리) 잠금 해제 여부 - 세션에서만 유지
+  const [settingsPasswordInput, setSettingsPasswordInput] = useState("");
+  const [settingsPasswordError, setSettingsPasswordError] = useState("");
+  const [resetPinTargetId, setResetPinTargetId] = useState(""); // 설정 화면에서 개별 PIN 초기화 대상 직원 id
+  const [resetPinSearch, setResetPinSearch] = useState(""); // 개별 PIN 초기화 - 이름 검색어
+  const [resetPinDropdownOpen, setResetPinDropdownOpen] = useState(false);
+  const [manualPinInput, setManualPinInput] = useState(""); // 개별 직원에게 직접 지정할 PIN
+  const [excelUploading, setExcelUploading] = useState(false);
+  const [excelUploadResults, setExcelUploadResults] = useState(null); // { success, skipped, failed } 배열들
+  const [pinExcelUploading, setPinExcelUploading] = useState(false);
+  const [pinExcelResults, setPinExcelResults] = useState(null); // { success, skipped, failed } 배열들
+  const [situationShareText, setSituationShareText] = useState("");
+  const [situationSharePhoto, setSituationSharePhoto] = useState(null); // { file, previewUrl }
+  const [situationShareSending, setSituationShareSending] = useState(false);
 
   const go = (s) => setScreen(s);
   const goHome = () => {
@@ -248,6 +325,23 @@ export default function App() {
         (payload) => {
           const directive = payload.new;
 
+          const SITUATION_SHARE_LABELS = { "TBM확인공유": "TBM 등록 현황 확인", "피재자상태공유": "피재자 상태 확인", "추가공유": "추가 공유" };
+          if (SITUATION_SHARE_LABELS[directive.action_key]) {
+            const shareNotif = {
+              id: directive.id,
+              title: `안전 상황실 — ${SITUATION_SHARE_LABELS[directive.action_key]}`,
+              body: directive.message || "내용을 확인해주세요.",
+              message: directive.message,
+              actionLabel: SITUATION_SHARE_LABELS[directive.action_key],
+              supervisorName: directive.supervisor_name || "안전 상황실",
+              sentAt: directive.sent_at,
+            };
+            setNotifBanner(shareNotif);
+            setNotifications(prev => [shareNotif, ...prev]);
+            setTimeout(() => setNotifBanner(null), 6000);
+            return;
+          }
+
           if (directive.action_key === "병원이름_입력완료") {
             const hospNotif = {
               id: directive.id,
@@ -263,29 +357,9 @@ export default function App() {
             return;
           }
 
-          if (directive.action_key === "상황종료") {
-            const closeNotif = {
-              id: directive.id,
-              title: "중대재해 대응 상황 종료 안내",
-              body: "본 사고에 대한 모든 조치가 완료되어 상황을 종료합니다. 안전한 대응에 협조해 주셔서 감사합니다.",
-              message: "본 사고에 대한 모든 조치가 완료되어 상황을 종료합니다. 안전한 대응에 협조해 주셔서 감사합니다.",
-              actionLabel: "상황 종료",
-              supervisorName: "안전 상황실",
-              sentAt: directive.sent_at,
-              isClose: true,
-            };
-            setActiveNotif(closeNotif);
-            // 몇 초 뒤 자동으로 홈 화면으로 이동 (직접 '확인'을 눌러도 바로 이동)
-            setTimeout(() => {
-              setActiveNotif(prev => (prev && prev.id === closeNotif.id ? null : prev));
-              goHome();
-            }, 4000);
-            return;
-          }
-
           const newNotif = {
             id: directive.id,
-            title: `상급자 조치 지시`,
+            title: (directive.supervisor_name && directive.supervisor_name.includes("상황실")) ? "상황실 지시" : "상급자 조치 지시",
             body: `${directive.supervisor_name}이(가) '${directive.action_label}' 지시를 전송했습니다.`,
             message: directive.message,
             actionLabel: directive.action_label,
@@ -296,6 +370,40 @@ export default function App() {
           setNotifBanner(newNotif);
           setNotifications(prev => [newNotif, ...prev]);
           setTimeout(() => setNotifBanner(null), 5000);
+        }
+      )
+      .subscribe();
+    return () => supabase.removeChannel(channel);
+  }, [userRole]);
+
+  // ── Supabase Realtime — 상황 종료 안내(작업자·상급자 공통) ──
+  // 초록 계열 전용 팝업으로 안내하고, 확인(또는 4초 후 자동)으로 각자의 홈 화면으로 이동
+  useEffect(() => {
+    if (userRole !== "worker" && userRole !== "supervisor") return;
+    const channel = supabase
+      .channel("situation-close-channel")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "directives" },
+        (payload) => {
+          const directive = payload.new;
+          if (directive.action_key !== "상황종료") return;
+          const closeNotif = {
+            id: directive.id,
+            title: "중대재해 대응 상황 종료 안내",
+            body: "본 사고에 대한 모든 조치가 완료되어 상황을 종료합니다. 안전한 대응에 협조해 주셔서 감사합니다.",
+            message: "본 사고에 대한 모든 조치가 완료되어 상황을 종료합니다. 안전한 대응에 협조해 주셔서 감사합니다.",
+            actionLabel: "상황 종료",
+            supervisorName: "안전 상황실",
+            sentAt: directive.sent_at,
+            isClose: true,
+          };
+          setActiveNotif(closeNotif);
+          // 몇 초 뒤 자동으로 각자의 홈 화면으로 이동 (직접 '확인'을 눌러도 바로 이동)
+          setTimeout(() => {
+            setActiveNotif(prev => (prev && prev.id === closeNotif.id ? null : prev));
+            goHome();
+          }, 4000);
         }
       )
       .subscribe();
@@ -469,6 +577,37 @@ export default function App() {
     return () => supabase.removeChannel(channel);
   }, [userRole]);
 
+  // ── Supabase Realtime — 상황실 공유(TBM확인/피재자상태확인/추가공유) 수신(상급자) ──
+  useEffect(() => {
+    if (userRole !== "supervisor") return;
+    const channel = supabase
+      .channel("situation-share-channel")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "directives" },
+        (payload) => {
+          const d = payload.new;
+          const SITUATION_SHARE_LABELS = { "TBM확인공유": "TBM 등록 현황 확인", "피재자상태공유": "피재자 상태 확인", "추가공유": "추가 공유" };
+          if (!SITUATION_SHARE_LABELS[d.action_key]) return;
+          const shareNotif = {
+            id: d.id,
+            title: `안전 상황실 — ${SITUATION_SHARE_LABELS[d.action_key]}`,
+            body: d.message || "내용을 확인해주세요.",
+            message: d.message,
+            actionLabel: SITUATION_SHARE_LABELS[d.action_key],
+            supervisorName: d.supervisor_name || "안전 상황실",
+            sentAt: d.sent_at,
+          };
+          setNotifBanner(shareNotif);
+          setTimeout(() => setNotifBanner(null), 6000);
+          // 지금 보고 있는 타임라인이 이 사고 건이면 캐시 무효화해서 자동으로 다시 불러오게 함
+          setTlLoadedFor((prev) => (prev === d.accident_id ? null : prev));
+        }
+      )
+      .subscribe();
+    return () => supabase.removeChannel(channel);
+  }, [userRole]);
+
   const currentRecipients = RECIPIENTS_BY_TYPE[workType] || RECIPIENTS_BY_TYPE["유지보수"];
 
   // ── 작업자/상급자가 동일하게 보는 공용 타임라인 조회 ──────
@@ -539,11 +678,22 @@ export default function App() {
         });
         return;
       }
+      const SITUATION_SHARE_KEYS = { "TBM확인공유": "📋 TBM 등록 현황 확인", "피재자상태공유": "🩹 피재자 상태 확인", "추가공유": "📎 추가 공유" };
+      if (SITUATION_SHARE_KEYS[d.action_key]) {
+        results.push({
+          time: new Date(d.sent_at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" }),
+          text: `${SITUATION_SHARE_KEYS[d.action_key]}${d.message ? ` — ${d.message}` : ""}`,
+          color: "#B7791F",
+          photoUrl: d.photo_url || null,
+        });
+        return;
+      }
+      const isFromSituationRoom = d.supervisor_name && d.supervisor_name.includes("상황실");
       const text = d.action_key === "병원이름_입력완료"
         ? `🏥 ${d.message || "병원 이송 정보 입력"}` // 작업자가 실제 입력한 "이송 병원: OOO" 그대로 표시
         : d.action_key === "상황종료"
         ? `✅ 상황 종료`
-        : `📨 상급자 지시 — ${d.action_label}${d.supervisor_name ? ` (${d.supervisor_name})` : ""}`;
+        : `📨 ${isFromSituationRoom ? "상황실" : "상급자 지시"} — ${d.action_label}${d.supervisor_name ? ` (${d.supervisor_name})` : ""}`;
       const color = d.action_key === "병원이름_입력완료" ? "#6B46C1"
         : d.action_key === "상황종료" ? "#38A169" : "#2B6CB0";
       results.push({
@@ -584,6 +734,255 @@ export default function App() {
     results.sort((a, b) => a.time.localeCompare(b.time));
     setTlEvents(results);
     setTlLoadedFor(accId);
+  };
+
+  // 타임라인 한 줄을 공통으로 그려주는 헬퍼 — 사진이 첨부된 이벤트는 클릭 시 확대 가능한 썸네일도 같이 보여준다
+  const renderTimelineEvent = (ev, i) => (
+    <div key={i} style={{ display: "flex", gap: 10, marginBottom: 10, alignItems: "flex-start" }}>
+      <div style={{ width: 8, height: 8, borderRadius: "50%", background: ev.color, flexShrink: 0, marginTop: 4 }} />
+      <div>
+        <span style={{ fontSize: 11, fontWeight: 700, color: "#2B6CB0", marginRight: 6 }}>{ev.time}</span>
+        <span style={{ fontSize: 12, color: "#111" }}>{ev.text}</span>
+        {ev.photoUrl && (
+          <div style={{ marginTop: 6 }}>
+            <img
+              src={ev.photoUrl}
+              alt="공유된 사진"
+              onClick={() => setLightboxUrl(ev.photoUrl)}
+              style={{ width: 92, height: 70, objectFit: "cover", borderRadius: 6, cursor: "pointer", border: "1px solid #E2E8F0" }}
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  // ── 사고보고서(.docx) 생성 — 실제 사고 데이터를 채워 다운로드 ──
+  const [reportGeneratingId, setReportGeneratingId] = useState(null);
+  const generateAccidentReportDocx = async (accident) => {
+    if (!accident) return;
+    const docxLib = window.docx;
+    if (!docxLib) {
+      alert("보고서 생성 라이브러리를 아직 불러오는 중입니다. 잠시 후 다시 시도해주세요.");
+      return;
+    }
+    setReportGeneratingId(accident.id);
+    try {
+      const { data: dirs } = await supabase
+        .from("directives").select("*").eq("accident_id", accident.id).order("sent_at", { ascending: true });
+
+      // 초동조치사항 — 체크리스트(작업중지/119신고/현장통제)를 항목별로 묶어서 정리
+      const CHECKLIST_LABELS = { stop: "작업 중지", report119: "119 신고", control: "현장 통제" };
+      const checklistGroups = {};
+      (dirs || []).forEach(d => {
+        if (!d.action_key.startsWith("checklist_")) return;
+        const rest = d.action_key.slice("checklist_".length);
+        const itemKey = rest.slice(0, rest.lastIndexOf("_"));
+        (checklistGroups[itemKey] = checklistGroups[itemKey] || []).push({ label: d.action_label, time: d.sent_at });
+      });
+
+      // 상급자 지시 및 조치 이력
+      const SITUATION_SHARE_LABELS = { "TBM확인공유": "현장 공유 (TBM 확인)", "피재자상태공유": "현장 공유 (피재자 상태)", "추가공유": "현장 공유" };
+      const timelineRows = [{
+        time: accident.created_at,
+        category: "1차 보고 접수",
+        content: `${accident.accident_type} / ${accident.worker_name}${accident.team ? " (" + accident.team + ")" : ""}`,
+        sender: "현장 작업자",
+      }];
+      (dirs || []).forEach(d => {
+        if (d.action_key === "응급조치_병원입력" || d.action_key.startsWith("checklist_")) return;
+        let category, content;
+        if (d.action_key === "병원이름_입력완료") { category = "병원 이송 정보"; content = d.message || "-"; }
+        else if (d.action_key === "상황종료") { category = "상황 종료"; content = d.message || "모든 조치 완료 확인 후 상황 종료"; }
+        else if (SITUATION_SHARE_LABELS[d.action_key]) { category = SITUATION_SHARE_LABELS[d.action_key]; content = d.message || "-"; }
+        else { category = (d.supervisor_name && d.supervisor_name.includes("상황실")) ? "상황실" : "상급자 지시"; content = d.action_label; }
+        timelineRows.push({ time: d.sent_at, category, content, sender: d.supervisor_name || "-" });
+      });
+      timelineRows.sort((a, b) => new Date(a.time) - new Date(b.time));
+
+      // 1차 보고 수신자
+      const recipients = RECIPIENTS_BY_TYPE[accident.work_type] || RECIPIENTS_BY_TYPE["유지보수"];
+
+      // 첨부 사진 — 사고 접수 시 첨부 + 현장 공유 중 사진이 있는 것들
+      const allPhotoUrls = [
+        ...(accident.photo_urls || []),
+        ...(dirs || []).filter(d => d.photo_url).map(d => d.photo_url),
+      ];
+      const photoImages = [];
+      for (const url of allPhotoUrls) {
+        try {
+          const res = await fetch(url);
+          const buf = await res.arrayBuffer();
+          const ext = (url.split("?")[0].split(".").pop() || "jpg").toLowerCase();
+          const type = ["jpg", "jpeg", "png", "gif", "bmp"].includes(ext) ? (ext === "jpeg" ? "jpg" : ext) : "jpg";
+          photoImages.push({ data: buf, type });
+        } catch (e) {
+          console.error("보고서용 사진 불러오기 실패:", url, e);
+        }
+      }
+
+      const fmtDateTime = (d) => d ? new Date(d).toLocaleString("ko-KR") : "-";
+      const fmtTime = (d) => d ? new Date(d).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" }) : "-";
+
+      const children = [
+        new docxLib.Paragraph({
+          alignment: "center", spacing: { after: 60 },
+          children: [new docxLib.TextRun({ text: "중대재해 사고 보고서", bold: true, size: 40, font: "맑은 고딕" })],
+        }),
+        new docxLib.Paragraph({
+          alignment: "center", spacing: { after: 200 },
+          children: [new docxLib.TextRun({ text: "SK 오앤에스 충청Access설비팀", size: 20, color: "888888", font: "맑은 고딕" })],
+        }),
+        new docxLib.Paragraph({
+          alignment: "right",
+          children: [new docxLib.TextRun({ text: `출력일시: ${new Date().toLocaleString("ko-KR")}`, size: 16, color: "999999", font: "맑은 고딕" })],
+        }),
+        new docxLib.Paragraph({
+          alignment: "right", spacing: { after: 200 },
+          children: [new docxLib.TextRun({
+            text: `상태: ${accident.status || "진행중"}`, size: 16, bold: true, font: "맑은 고딕",
+            color: accident.status === "완료" ? DOCX_GREEN : DOCX_RED,
+          })],
+        }),
+
+        // 1. 사고 개요
+        docxSectionHeading(1, "사고 개요"),
+        new docxLib.Table({
+          width: { size: DOCX_CONTENT_WIDTH, type: "dxa" },
+          columnWidths: [2000, 5906, 2000, 3000],
+          rows: [
+            new docxLib.TableRow({ children: [docxLabelCell("사고 일시", 2000), docxValueCell(fmtDateTime(accident.created_at), 5906, { colSpan: 3 })] }),
+            new docxLib.TableRow({ children: [docxLabelCell("사고 장소", 2000), docxValueCell(accident.location, 5906, { colSpan: 3 })] }),
+            new docxLib.TableRow({ children: [
+              docxLabelCell("사고 유형", 2000), docxValueCell(accident.accident_type, 5906),
+              docxLabelCell("부상자 유무", 2000), docxValueCell(accident.has_injured ? "있음" : "없음", 3000, { color: accident.has_injured ? DOCX_RED : undefined, bold: !!accident.has_injured }),
+            ] }),
+            new docxLib.TableRow({ children: [
+              docxLabelCell("작업 구분", 2000), docxValueCell(accident.work_type, 5906),
+              docxLabelCell("사고 상태", 2000), docxValueCell(accident.status || "진행중", 3000, { color: accident.status === "완료" ? DOCX_GREEN : DOCX_RED, bold: true }),
+            ] }),
+            new docxLib.TableRow({ children: [docxLabelCell("사고 내용", 2000), docxValueCell(accident.content, 5906, { colSpan: 3 })] }),
+          ],
+        }),
+
+        // 2. 작업자 정보
+        docxSectionHeading(2, "작업자 정보"),
+        new docxLib.Table({
+          width: { size: DOCX_CONTENT_WIDTH, type: "dxa" },
+          columnWidths: [2740, 2740, 2740, 2686],
+          rows: [
+            new docxLib.TableRow({ children: [docxLabelCell("성명", 2740), docxLabelCell("소속팀", 2740), docxLabelCell("업무유형", 2740), docxLabelCell("최초 보고 시각", 2686)] }),
+            new docxLib.TableRow({ children: [
+              docxValueCell(accident.worker_name, 2740), docxValueCell(accident.team || staffTeamMap[accident.worker_name], 2740),
+              docxValueCell(accident.work_type, 2740), docxValueCell(fmtDateTime(accident.created_at), 2686),
+            ] }),
+          ],
+        }),
+
+        // 3. 1차 보고 수신자
+        docxSectionHeading(3, "1차 보고 수신자"),
+        new docxLib.Table({
+          width: { size: DOCX_CONTENT_WIDTH, type: "dxa" },
+          columnWidths: [3000, 3000, 3906],
+          rows: [
+            new docxLib.TableRow({ children: [docxLabelCell("이름", 3000), docxLabelCell("직책", 3000), docxLabelCell("연락처", 3906)] }),
+            ...recipients.map(r => new docxLib.TableRow({ children: [docxValueCell(r.name, 3000), docxValueCell(r.tier, 3000), docxValueCell(r.phone, 3906)] })),
+          ],
+        }),
+
+        // 4. 초동 조치사항
+        docxSectionHeading(4, "초동 조치사항"),
+        docxBodyText("현장 작업자가 앱을 통해 체크한 긴급조치 이행 현황입니다.", { color: "888888" }),
+        Object.keys(checklistGroups).length === 0
+          ? docxBodyText("기록된 초동 조치 체크 내역이 없습니다.", { color: "AAAAAA" })
+          : new docxLib.Table({
+              width: { size: DOCX_CONTENT_WIDTH, type: "dxa" },
+              columnWidths: [2400, 6906, 1600],
+              rows: [
+                new docxLib.TableRow({ children: [docxLabelCell("구분", 2400), docxLabelCell("세부 내용", 6906), docxLabelCell("확인 시각", 1600)] }),
+                ...Object.entries(checklistGroups).map(([itemKey, items]) => new docxLib.TableRow({
+                  children: [
+                    docxValueCell(CHECKLIST_LABELS[itemKey] || itemKey, 2400),
+                    docxValueCell(items.map(it => it.label).join(" / "), 6906),
+                    docxValueCell(fmtTime(items[items.length - 1].time), 1600),
+                  ],
+                })),
+              ],
+            }),
+
+        // 5. 상급자 지시 및 조치 이력
+        docxSectionHeading(5, "상급자 지시 및 조치 이력"),
+        new docxLib.Table({
+          width: { size: DOCX_CONTENT_WIDTH, type: "dxa" },
+          columnWidths: [1600, 2600, 5106, 1600],
+          rows: [
+            new docxLib.TableRow({ children: [docxLabelCell("시각", 1600), docxLabelCell("구분", 2600), docxLabelCell("내용", 5106), docxLabelCell("발신자", 1600)] }),
+            ...timelineRows.map(row => new docxLib.TableRow({
+              children: [docxValueCell(fmtTime(row.time), 1600), docxValueCell(row.category, 2600), docxValueCell(row.content, 5106), docxValueCell(row.sender, 1600)],
+            })),
+          ],
+        }),
+
+        // 6. 첨부 사진
+        docxSectionHeading(6, "첨부 사진"),
+      ];
+
+      if (photoImages.length === 0) {
+        children.push(docxBodyText("등록된 사진이 없습니다.", { color: "AAAAAA" }));
+      } else {
+        const photoCellWidth = DOCX_CONTENT_WIDTH / 2;
+        for (let i = 0; i < photoImages.length; i += 2) {
+          const pair = [photoImages[i], photoImages[i + 1]];
+          children.push(new docxLib.Table({
+            width: { size: DOCX_CONTENT_WIDTH, type: "dxa" },
+            columnWidths: [photoCellWidth, photoCellWidth],
+            rows: [new docxLib.TableRow({
+              children: pair.map((img) => new docxLib.TableCell({
+                width: { size: photoCellWidth, type: "dxa" },
+                borders: DOCX_CELL_BORDERS,
+                margins: { top: 100, bottom: 100, left: 100, right: 100 },
+                children: [new docxLib.Paragraph({
+                  alignment: "center",
+                  children: img
+                    ? [new docxLib.ImageRun({ type: img.type, data: img.data, transformation: { width: 260, height: 190 } })]
+                    : [new docxLib.TextRun({ text: "", size: 1 })],
+                })],
+              })),
+            })],
+          }));
+        }
+      }
+
+      const doc = new docxLib.Document({
+        sections: [{
+          properties: {
+            page: {
+              size: { width: DOCX_PAGE_WIDTH, height: 16838 },
+              margin: { top: DOCX_MARGIN, bottom: DOCX_MARGIN, left: DOCX_MARGIN, right: DOCX_MARGIN },
+            },
+          },
+          children,
+        }],
+      });
+
+      const blob = await docxLib.Packer.toBlob(doc);
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      const dateStr = accident.created_at ? new Date(accident.created_at).toISOString().slice(0, 10) : "unknown";
+      const teamName = (accident.team || staffTeamMap[accident.worker_name] || "미지정").replace(/[\\/:*?"<>|]/g, "_");
+      const workerName = (accident.worker_name || "작업자").replace(/[\\/:*?"<>|]/g, "_");
+      a.download = `사고보고서_${teamName}_${workerName}_${dateStr}.docx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+    } catch (e) {
+      console.error("보고서 생성 실패:", e);
+      alert("보고서 생성에 실패했습니다: " + e.message);
+    } finally {
+      setReportGeneratingId(null);
+    }
   };
 
   const styles = {
@@ -920,29 +1319,19 @@ export default function App() {
         return;
       }
       setPhoneError("");
+      setPendingLoginUser(data);
       setCodeSent(true);
       setLoginStep("verify");
       setVerifyCode("");
     };
 
     const handleVerify = async () => {
-      // 프로토타입: 123456 고정 인증번호 (SMS 연동 후 교체)
-      if (verifyCode !== "123456") {
-        setVerifyError("인증번호가 일치하지 않습니다. 다시 확인해주세요.");
+      if (!pendingLoginUser) { setVerifyError("사용자 정보를 불러올 수 없습니다."); return; }
+      if (verifyCode !== pendingLoginUser.pin) {
+        setVerifyError("PIN 번호가 일치하지 않습니다. 다시 확인해주세요.");
         return;
       }
-      const digits = phoneNum.replace(/\D/g, "");
-      // DB에서 사용자 정보 다시 조회
-      const { data: user } = await supabase
-        .from("users")
-        .select("*")
-        .eq("phone", digits)
-        .single();
-
-      if (!user) {
-        setVerifyError("사용자 정보를 불러올 수 없습니다.");
-        return;
-      }
+      const user = pendingLoginUser;
       setUserRole(user.role);
       setCurrentUser(user);
       if (user.work_type) setWorkType(user.work_type);
@@ -976,7 +1365,7 @@ export default function App() {
                 핸드폰 번호
               </div>
               <div style={{ fontSize: 12, color: "#888", marginBottom: 14 }}>
-                등록된 번호로 인증번호를 발송해 드립니다.
+                등록된 번호로 PIN 번호를 입력해 로그인합니다.
               </div>
 
               {/* 번호 입력 필드 */}
@@ -1011,7 +1400,7 @@ export default function App() {
                 </div>
               )}
 
-              {/* 인증번호 받기 버튼 */}
+              {/* 다음 버튼 */}
               <button
                 onClick={handleSendCode}
                 style={{
@@ -1019,7 +1408,7 @@ export default function App() {
                   fontSize: 16, padding: "15px",
                   boxShadow: "0 4px 12px rgba(229,62,62,0.25)",
                 }}
-              >인증번호 받기</button>
+              >다음</button>
 
               {/* 안내 */}
               <div style={{
@@ -1035,12 +1424,12 @@ export default function App() {
             </div>
           )}
 
-          {/* ── STEP 2: 인증번호 입력 ── */}
+          {/* ── STEP 2: PIN 번호 입력 ── */}
           {loginStep === "verify" && (
             <div style={{ width: "100%" }}>
               {/* 뒤로가기 */}
               <button
-                onClick={() => { setLoginStep("phone"); setVerifyError(""); setCodeSent(false); }}
+                onClick={() => { setLoginStep("phone"); setVerifyError(""); setCodeSent(false); setPendingLoginUser(null); }}
                 style={{
                   background: "none", border: "none", cursor: "pointer",
                   fontSize: 13, color: "#888", marginBottom: 16,
@@ -1049,21 +1438,21 @@ export default function App() {
               >‹ 번호 다시 입력</button>
 
               <div style={{ fontSize: 14, fontWeight: 700, color: "#111", marginBottom: 6 }}>
-                인증번호 입력
+                PIN 번호 입력
               </div>
               <div style={{ fontSize: 12, color: "#888", marginBottom: 18, lineHeight: 1.6 }}>
-                <span style={{ color: "#E53E3E", fontWeight: 700 }}>{phoneNum}</span> 으로<br />
-                6자리 인증번호가 발송되었습니다.
+                <span style={{ color: "#E53E3E", fontWeight: 700 }}>{pendingLoginUser?.name || phoneNum}</span>님,<br />
+                등록하신 PIN 번호 6자리를 입력해주세요.
               </div>
 
-              {/* 인증번호 박스 6칸 — 탭하면 키패드 자동 열림 */}
+              {/* PIN 박스 6칸 — 탭하면 키패드 자동 열림 */}
               <div
                 onClick={() => document.getElementById("verify-input")?.focus()}
-                style={{ display: "flex", gap: 8, justifyContent: "center", marginBottom: 8, cursor: "pointer" }}
+                style={{ display: "flex", gap: 7, justifyContent: "center", marginBottom: 8, cursor: "pointer" }}
               >
                 {[0,1,2,3,4,5].map((i) => (
                   <div key={i} style={{
-                    width: 44, height: 52, borderRadius: 10,
+                    width: 42, height: 54, borderRadius: 10,
                     border: `2px solid ${
                       verifyError ? "#E53E3E"
                       : verifyCode.length > i ? "#E53E3E"
@@ -1071,10 +1460,10 @@ export default function App() {
                     }`,
                     background: verifyCode.length > i ? "#FFF5F5" : "#F7FAFC",
                     display: "flex", alignItems: "center", justifyContent: "center",
-                    fontSize: 20, fontWeight: 800, color: "#E53E3E",
+                    fontSize: 22, fontWeight: 800, color: "#E53E3E",
                     transition: "all 0.1s",
                   }}>
-                    {verifyCode[i] || ""}
+                    {verifyCode[i] ? "●" : ""}
                   </div>
                 ))}
               </div>
@@ -1082,28 +1471,22 @@ export default function App() {
               {/* 실제 입력 필드 — 보이지 않지만 키패드 열림 */}
               <input
                 id="verify-input"
-                type="tel"
+                type="password"
                 inputMode="numeric"
                 pattern="[0-9]*"
                 maxLength={6}
                 value={verifyCode}
-                autoComplete="one-time-code"
+                autoComplete="off"
                 onChange={(e) => {
                   const v = e.target.value.replace(/\D/g, "").slice(0, 6);
                   setVerifyCode(v);
                   setVerifyError("");
                   if (v.length === 6) {
                     setTimeout(async () => {
-                      if (v !== "123456") {
-                        setVerifyError("인증번호가 일치하지 않습니다.");
+                      if (!pendingLoginUser || v !== pendingLoginUser.pin) {
+                        setVerifyError("PIN 번호가 일치하지 않습니다.");
                       } else {
-                        const digits = phoneNum.replace(/\D/g, "");
-                        const { data: user } = await supabase
-                          .from("users")
-                          .select("*")
-                          .eq("phone", digits)
-                          .single();
-                        if (!user) { setVerifyError("사용자 정보를 불러올 수 없습니다."); return; }
+                        const user = pendingLoginUser;
                         setUserRole(user.role);
                         setCurrentUser(user);
                         if (user.work_type) setWorkType(user.work_type);
@@ -1139,27 +1522,9 @@ export default function App() {
                 }}
               >확인 →</button>
 
-              {/* 재발송 */}
+              {/* PIN 분실 안내 */}
               <div style={{ textAlign: "center", marginTop: 16 }}>
-                <button
-                  onClick={() => { setVerifyCode(""); setVerifyError(""); }}
-                  style={{
-                    background: "none", border: "none", cursor: "pointer",
-                    fontSize: 13, color: "#888", textDecoration: "underline",
-                  }}
-                >인증번호 재발송</button>
-              </div>
-
-              {/* 프로토타입 안내 */}
-              <div style={{
-                marginTop: 16, padding: "12px 14px", background: "#FFF5F5",
-                borderRadius: 10, border: "1px solid #FED7D7",
-              }}>
-                <div style={{ fontSize: 12, color: "#C53030", lineHeight: 1.7 }}>
-                  🔧 <strong>프로토타입 테스트용</strong><br />
-                  인증번호: <strong>123456</strong> (고정)<br />
-                  DB 연결 후 실제 문자로 교체됩니다.
-                </div>
+                <span style={{ fontSize: 13, color: "#888" }}>PIN 번호를 잊으셨나요? 안전관리팀에 문의해주세요.</span>
               </div>
             </div>
           )}
@@ -1192,6 +1557,7 @@ export default function App() {
     const activeCount = visibleReports.filter(a => a.status === "진행중").length;
     const doneCount   = visibleReports.filter(a => a.status === "완료").length;
     const activeReports = visibleReports.filter(a => a.status === "진행중");
+    const doneReports = visibleReports.filter(a => a.status === "완료");
 
     const goToReportStatus = (acc) => {
       setCurrentAccidentId(acc.id);
@@ -1266,46 +1632,61 @@ export default function App() {
           <div>
             <div style={{ fontSize: 15, fontWeight: 800, color: "#111", marginBottom: 10 }}>📋 사고 현황</div>
             <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-              <div style={{ flex: 1, background: "#F7FAFC", border: "1px solid #E2E8F0", borderRadius: 10, padding: "12px 8px", textAlign: "center" }}>
-                <div style={{ fontSize: 20, fontWeight: 800, color: "#2D3748" }}>{totalCount}</div>
-                <div style={{ fontSize: 11, color: "#888", marginTop: 2 }}>전체</div>
-              </div>
-              <div style={{ flex: 1, background: "#FFF5F5", border: "1px solid #FED7D7", borderRadius: 10, padding: "12px 8px", textAlign: "center" }}>
-                <div style={{ fontSize: 20, fontWeight: 800, color: "#E53E3E" }}>{activeCount}</div>
-                <div style={{ fontSize: 11, color: "#C53030", marginTop: 2 }}>진행중</div>
-              </div>
-              <div style={{ flex: 1, background: "#F0FFF4", border: "1px solid #9AE6B4", borderRadius: 10, padding: "12px 8px", textAlign: "center" }}>
-                <div style={{ fontSize: 20, fontWeight: 800, color: "#276749" }}>{doneCount}</div>
-                <div style={{ fontSize: 11, color: "#276749", marginTop: 2 }}>완료</div>
-              </div>
-            </div>
-
-            <div style={{ fontSize: 13, fontWeight: 700, color: "#111", marginBottom: 8 }}>🚨 진행중인 사고</div>
-            {activeReports.length === 0 ? (
-              <div style={{
-                background: "#F0FFF4", border: "1px solid #9AE6B4", borderRadius: 10,
-                padding: "16px", textAlign: "center", fontSize: 13, color: "#276749", fontWeight: 600,
-              }}>✅ 현재 진행중인 사고가 없습니다.</div>
-            ) : (
-              activeReports.map(acc => (
+              {[
+                { key: "전체", label: "전체", count: totalCount, bg: "#F7FAFC", border: "#E2E8F0", color: "#2D3748" },
+                { key: "진행중", label: "진행중", count: activeCount, bg: "#FFF5F5", border: "#FED7D7", color: "#E53E3E" },
+                { key: "완료", label: "완료", count: doneCount, bg: "#F0FFF4", border: "#9AE6B4", color: "#276749" },
+              ].map(f => (
                 <button
-                  key={acc.id}
-                  onClick={() => goToReportStatus(acc)}
+                  key={f.key}
+                  onClick={() => setWorkerHomeFilter(f.key)}
                   style={{
-                    width: "100%", textAlign: "left", background: "#fff",
-                    border: "1.5px solid #FED7D7", borderRadius: 12,
-                    padding: "12px 14px", marginBottom: 8, cursor: "pointer",
-                    boxShadow: "0 2px 8px rgba(229,62,62,0.08)",
+                    flex: 1, background: f.bg, borderRadius: 10, padding: "12px 8px", textAlign: "center", cursor: "pointer",
+                    border: workerHomeFilter === f.key ? `2px solid ${f.color}` : `1px solid ${f.border}`,
                   }}
                 >
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                    <span style={{ fontWeight: 700, fontSize: 13, color: "#111" }}>{acc.accident_type} 사고</span>
-                    <span style={{ background: "#FFF5F5", color: "#E53E3E", fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 20, border: "1px solid #FED7D7" }}>진행중</span>
-                  </div>
-                  <div style={{ fontSize: 12, color: "#888" }}>👷 {staffTeamMap[acc.worker_name] ? `${staffTeamMap[acc.worker_name]} · ` : ""}{acc.worker_name} · {acc.work_type}</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: f.color }}>{f.count}</div>
+                  <div style={{ fontSize: 11, color: f.color, marginTop: 2, fontWeight: workerHomeFilter === f.key ? 700 : 400 }}>{f.label}</div>
                 </button>
-              ))
-            )}
+              ))}
+            </div>
+
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#111", marginBottom: 8 }}>
+              {workerHomeFilter === "전체" ? "📋 전체 사고" : workerHomeFilter === "진행중" ? "🚨 진행중인 사고" : "✅ 완료된 사고"}
+            </div>
+            {(() => {
+              const listForFilter = workerHomeFilter === "전체" ? visibleReports : workerHomeFilter === "진행중" ? activeReports : doneReports;
+              return listForFilter.length === 0 ? (
+                <div style={{
+                  background: "#F7FAFC", border: "1px solid #E2E8F0", borderRadius: 10,
+                  padding: "16px", textAlign: "center", fontSize: 13, color: "#888", fontWeight: 600,
+                }}>표시할 사고가 없습니다.</div>
+              ) : (
+                listForFilter.map(acc => (
+                  <button
+                    key={acc.id}
+                    onClick={() => goToReportStatus(acc)}
+                    style={{
+                      width: "100%", textAlign: "left", background: "#fff",
+                      border: `1.5px solid ${acc.status === "완료" ? "#9AE6B4" : "#FED7D7"}`, borderRadius: 12,
+                      padding: "12px 14px", marginBottom: 8, cursor: "pointer",
+                      boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                      <span style={{ fontWeight: 700, fontSize: 13, color: "#111" }}>{acc.accident_type} 사고</span>
+                      <span style={{
+                        background: acc.status === "완료" ? "#F0FFF4" : "#FFF5F5",
+                        color: acc.status === "완료" ? "#276749" : "#E53E3E",
+                        fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 20,
+                        border: `1px solid ${acc.status === "완료" ? "#9AE6B4" : "#FED7D7"}`,
+                      }}>{acc.status || "진행중"}</span>
+                    </div>
+                    <div style={{ fontSize: 12, color: "#888" }}>👷 {staffTeamMap[acc.worker_name] ? `${staffTeamMap[acc.worker_name]} · ` : ""}{acc.worker_name} · {acc.work_type}</div>
+                  </button>
+                ))
+              );
+            })()}
           </div>
 
           {/* 모의훈련 알람 팝업 */}
@@ -2485,15 +2866,7 @@ export default function App() {
             {tlEvents.length === 0 ? (
               <div style={{ textAlign: "center", color: "#aaa", fontSize: 13 }}>아직 기록 없음</div>
             ) : (
-              tlEvents.map((ev, i) => (
-                <div key={i} style={{ display: "flex", gap: 10, marginBottom: 10, alignItems: "flex-start" }}>
-                  <div style={{ width: 8, height: 8, borderRadius: "50%", background: ev.color, flexShrink: 0, marginTop: 4 }} />
-                  <div>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: "#2B6CB0", marginRight: 6 }}>{ev.time}</span>
-                    <span style={{ fontSize: 12, color: "#111" }}>{ev.text}</span>
-                  </div>
-                </div>
-              ))
+              tlEvents.map(renderTimelineEvent)
             )}
           </div>
 
@@ -2714,7 +3087,7 @@ export default function App() {
 
     const displayUsers = emergencySearch.trim()
       ? searchResults
-      : emergencyUsers.filter(u => emergencyTab === "전체" || u.work_type === emergencyTab || (!u.work_type && emergencyTab === "전체"));
+      : emergencyUsers.filter(u => emergencyTab === "전체" || u.work_type === emergencyTab || u.work_type === "전체");
 
     return (
       <div style={styles.phone}>{GlobalOverlay()}
@@ -2877,6 +3250,11 @@ export default function App() {
         key: "병원이송",
         label: "병원 이송",
         defaultMsg: `[병원 이송 지시]\n\n부상자에 대한 즉각적인 응급조치 및\n병원 이송을 지시합니다.\n\n- 현장 응급 처치 즉시 시행\n- 인근 응급실로 신속 이송\n- 이송 병원 및 상태 보고 요망\n\n`,
+      },
+      {
+        key: "TBM확인",
+        label: "TBM 등록 현황 파악 요청",
+        defaultMsg: `[TBM 등록 현황 파악 요청]\n\n금일 작업 관련 TBM(Tool Box Meeting)\n등록 현황을 확인하여 보고해주시기 바랍니다.\n\n- TBM 실시 여부 확인\n- 참석자 명단 확인\n- 등록 여부 및 등록 시각 보고 요망\n\n`,
       },
     ];
 
@@ -3078,7 +3456,7 @@ export default function App() {
                           borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: "pointer",
                         }}
                       >
-                        📨 문자 전송
+                        📨 전송
                       </button>
                     </div>
                   )}
@@ -3126,23 +3504,8 @@ export default function App() {
               아직 기록된 내용이 없습니다.
             </div>
           ) : (
-            <div style={{ position: "relative" }}>
-              <div style={{ position: "absolute", left: 13, top: 14, bottom: 14, width: 2, background: "#E2E8F0", zIndex: 0 }} />
-              {tlEvents.map((ev, i) => (
-                <div key={i} style={{ display: "flex", gap: 12, marginBottom: 14, position: "relative", zIndex: 1 }}>
-                  <div style={{
-                    width: 28, height: 28, borderRadius: "50%", flexShrink: 0,
-                    background: ev.color, display: "flex", alignItems: "center",
-                    justifyContent: "center", fontSize: 12, color: "#fff", fontWeight: 700,
-                  }}>✓</div>
-                  <div style={{ flex: 1, background: "#fff", border: "1px solid #E2E8F0", borderRadius: 8, padding: "8px 12px" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 }}>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: "#111" }}>{ev.text}</span>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: ev.color, background: ev.color + "18", borderRadius: 4, padding: "1px 6px" }}>{ev.time}</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
+            <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 12, padding: 14 }}>
+              {tlEvents.map(renderTimelineEvent)}
             </div>
           )}
         </div>
@@ -3183,25 +3546,53 @@ export default function App() {
     };
 
     // 상급자 화면과 동일한 3대 조치 지시 — 상황실에서도 직접 보낼 수 있도록
-    const SITUATION_DIRECTIVES = [
-      { key: "재지시대피", icon: "🚫", label: "작업중지 재지시 + 대피 요청", color: "#C53030",
-        defaultMsg: "[작업중지 재지시 및 대피 요청]\n\n작업중지를 재지시하고 2차 사고 예방을 위해\n모든 작업자의 즉각적인 대피를 요청합니다." },
-      { key: "현장보존", icon: "🔒", label: "현장 보존", color: "#276749",
-        defaultMsg: "[현장 보존 지시]\n\n사고 조사를 위한 현장 보존을 철저히 유지하시기 바랍니다." },
-      { key: "병원이송", icon: "🏥", label: "병원 이송", color: "#6B46C1",
-        defaultMsg: "[병원 이송 지시]\n\n부상자에 대한 즉각적인 응급조치 및 병원 이송을 지시합니다." },
+    const SITUATION_SHARE_TYPES = [
+      { key: "TBM확인공유", icon: "📋", label: "TBM 확인" },
+      { key: "피재자상태공유", icon: "🩹", label: "피재자 상태 확인" },
+      { key: "추가공유", icon: "📎", label: "추가 공유" },
     ];
 
-    const handleSituationDirective = async (item) => {
-      if (!selectedAccident) return;
-      if (!window.confirm(`'${item.label}' 지시를 전송하시겠습니까?`)) return;
-      await supabase.from("directives").insert({
+    const handleSendSituationShare = async () => {
+      if (!selectedAccident || !situationShareType) return;
+      if (!situationShareText.trim() && !situationSharePhoto) {
+        alert("내용을 입력하거나 사진을 첨부해주세요.");
+        return;
+      }
+      setSituationShareSending(true);
+      let photoUrl = null;
+      if (situationSharePhoto?.file) {
+        try {
+          const safeName = situationSharePhoto.file.name.replace(/[^a-zA-Z0-9.\-_]/g, "_");
+          const path = `${selectedAccident.id}/share_${Date.now()}_${safeName}`;
+          const { error: upErr } = await supabase.storage.from("accident-photos").upload(path, situationSharePhoto.file);
+          if (!upErr) {
+            const { data: pub } = supabase.storage.from("accident-photos").getPublicUrl(path);
+            photoUrl = pub?.publicUrl || null;
+          } else {
+            console.error("공유 사진 업로드 실패:", upErr);
+          }
+        } catch (e) {
+          console.error("공유 사진 업로드 중 오류:", e);
+        }
+      }
+      const shareLabel = SITUATION_SHARE_TYPES.find(t => t.key === situationShareType)?.label || situationShareType;
+      const { error } = await supabase.from("directives").insert({
         accident_id: selectedAccident.id,
-        action_key: item.key,
-        action_label: item.label,
-        message: item.defaultMsg,
+        action_key: situationShareType,
+        action_label: shareLabel,
+        message: situationShareText.trim(),
+        photo_url: photoUrl,
         supervisor_name: currentUser?.name || "안전 상황실",
       });
+      setSituationShareSending(false);
+      if (error) {
+        console.error("공유 전송 실패:", error);
+        alert("전송에 실패했습니다: " + error.message);
+        return;
+      }
+      setSituationShareType(null);
+      setSituationShareText("");
+      setSituationSharePhoto(null);
       loadSharedTimeline(selectedAccident.id);
     };
 
@@ -3269,25 +3660,215 @@ export default function App() {
     };
 
     // 사고 이력에서 완전 삭제 — 되돌릴 수 없음 (직접 연결된 지시/출동 기록까지 함께 제거)
-    const handlePermanentlyDeleteAccident = async (id) => {
-      if (!window.confirm("이 사고 기록을 영구적으로 삭제하시겠습니까?\n이 작업은 되돌릴 수 없으며, 관련된 지시·출동 기록도 함께 삭제됩니다.")) return;
-      const { error } = await supabase.from("accident_reports").delete().eq("id", id);
+    // 사고 이력에서 체크한 여러 건을 한 번에 영구 삭제
+    const handleBulkPermanentDelete = async () => {
+      const ids = Object.keys(selectedHistoryIds).filter(id => selectedHistoryIds[id]);
+      if (ids.length === 0) return;
+      if (!window.confirm(`선택한 ${ids.length}건의 사고 기록을 영구적으로 삭제하시겠습니까?\n이 작업은 되돌릴 수 없으며, 관련된 지시·출동 기록도 함께 삭제됩니다.`)) return;
+      // .select()를 붙여서 실제로 삭제된 행을 돌려받는다 — RLS가 막고 있으면 에러 없이 0건이 돌아온다
+      const { data, error } = await supabase.from("accident_reports").delete().in("id", ids).select();
       if (error) {
-        console.error("사고 영구 삭제 실패:", error);
+        console.error("사고 일괄 영구 삭제 실패:", error);
         alert("영구 삭제에 실패했습니다: " + error.message);
         return;
       }
-      // 연결된 지시/출동 기록도 함께 정리 (실패해도 사고 자체는 이미 삭제된 상태)
-      supabase.from("directives").delete().eq("accident_id", id).then(() => {});
-      supabase.from("dispatches").delete().eq("accident_id", id).then(() => {});
-      setAccidentReports(prev => prev.filter(a => a.id !== id));
-      if (selectedAccident?.id === id) setSelectedAccident(null);
+      if (!data || data.length === 0) {
+        alert("삭제 권한이 없어 실제로는 삭제되지 않았습니다. Supabase의 accident_reports 테이블에 DELETE 정책이 필요합니다.");
+        return;
+      }
+      const deletedIds = data.map(d => d.id);
+      supabase.from("directives").delete().in("accident_id", deletedIds).then(() => {});
+      supabase.from("dispatches").delete().in("accident_id", deletedIds).then(() => {});
+      setAccidentReports(prev => prev.filter(a => !deletedIds.includes(a.id)));
+      if (selectedAccident && deletedIds.includes(selectedAccident.id)) setSelectedAccident(null);
+      setSelectedHistoryIds({});
+    };
+
+    // 보고서 출력 탭에서 체크한 여러 사고를 순서대로 각각 .docx로 생성/다운로드
+    const handleBulkGenerateReports = async () => {
+      const ids = Object.keys(selectedReportIds).filter(id => selectedReportIds[id]);
+      if (ids.length === 0) return;
+      const targets = accidentReports.filter(a => ids.includes(a.id));
+      setBulkReportProgress({ current: 0, total: targets.length });
+      for (let i = 0; i < targets.length; i++) {
+        setBulkReportProgress({ current: i + 1, total: targets.length });
+        await generateAccidentReportDocx(targets[i]);
+      }
+      setBulkReportProgress(null);
+      setSelectedReportIds({});
     };
 
     const handleSetStaffActive = async (id, active) => {
       await supabase.from("users").update({ is_active: active }).eq("id", id);
       loadStaff();
       loadStaffTeamMap();
+    };
+
+    // 직원을 목록에서 완전히 삭제 (비활성화와 달리 되돌릴 수 없음)
+    const handleDeleteStaffMember = async (s) => {
+      if (!window.confirm(`${s.name}님을 직원 목록에서 완전히 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다. (계정 로그인도 즉시 불가능해집니다)`)) return;
+      // .select()를 붙여서 실제로 삭제된 행을 돌려받는다 — RLS가 막고 있으면 에러 없이 0건이 돌아온다
+      const { data, error } = await supabase.from("users").delete().eq("id", s.id).select();
+      if (error) {
+        alert("삭제에 실패했습니다: " + error.message);
+        return;
+      }
+      if (!data || data.length === 0) {
+        alert("삭제 권한이 없어 실제로는 삭제되지 않았습니다. Supabase의 users 테이블에 DELETE 정책이 필요합니다.");
+        return;
+      }
+      loadStaff();
+      loadStaffTeamMap();
+    };
+
+    // 엑셀(직원 대량등록 양식)을 읽어서 users 테이블에 한 번에 등록
+    // 역할/업무유형 한글 라벨 → DB 저장값 매핑
+    const ROLE_LABEL_TO_CODE = { "현장 작업자": "worker", "상급자": "supervisor", "상황실": "situation" };
+    const handleExcelUpload = async (file) => {
+      if (!file) return;
+      setExcelUploading(true);
+      setExcelUploadResults(null);
+      try {
+        const buf = await file.arrayBuffer();
+        const wb = XLSX.read(buf, { type: "array" });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        // header:1 → 각 행을 배열 그대로 가져와서, 양식 헤더 행("이름","전화번호"...)을 직접 찾는다
+        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+
+        const headerRowIdx = rows.findIndex(r => r.includes("이름") && r.includes("전화번호"));
+        if (headerRowIdx === -1) {
+          alert("양식을 찾을 수 없습니다. 제공된 엑셀 양식 그대로 사용해주세요 (이름/전화번호/역할/소속팀/업무유형 헤더 필요).");
+          setExcelUploading(false);
+          return;
+        }
+        const header = rows[headerRowIdx];
+        const colIdx = {
+          name: header.indexOf("이름"),
+          phone: header.indexOf("전화번호"),
+          role: header.indexOf("역할"),
+          team: header.indexOf("소속팀"),
+          work_type: header.indexOf("업무유형"),
+          pin: header.findIndex(h => String(h).startsWith("PIN")),
+        };
+        const dataRows = rows.slice(headerRowIdx + 1);
+
+        const success = [], skipped = [], failed = [];
+        const existingPhones = new Set(staffList.map(s => s.phone));
+
+        for (const row of dataRows) {
+          const name = String(row[colIdx.name] || "").trim();
+          const phoneRaw = String(row[colIdx.phone] || "").trim();
+          const roleLabel = String(row[colIdx.role] || "").trim();
+          const team = String(row[colIdx.team] || "").trim();
+          const workType = String(row[colIdx.work_type] || "").trim();
+          const pinRaw = colIdx.pin >= 0 ? String(row[colIdx.pin] || "").trim() : "";
+          // 완전히 빈 행이거나, 양식 예시 행(김철수/010-1234-5678) 그대로면 건너뜀
+          if (!name && !phoneRaw) continue;
+          if (name === "김철수" && phoneRaw.replace(/\D/g, "") === "01012345678") continue;
+
+          const phone = phoneRaw.replace(/\D/g, "");
+          if (!name || phone.length !== 11) {
+            failed.push({ name: name || "(이름 없음)", phone: phoneRaw, reason: "이름 또는 전화번호 형식 오류" });
+            continue;
+          }
+          if (existingPhones.has(phone)) {
+            skipped.push({ name, phone, reason: "이미 등록된 번호" });
+            continue;
+          }
+          const role = ROLE_LABEL_TO_CODE[roleLabel];
+          if (!role) {
+            failed.push({ name, phone, reason: `역할 값 오류 ("${roleLabel}") — 현장 작업자/상급자/상황실 중 하나여야 함` });
+            continue;
+          }
+          const insertPayload = {
+            name, phone, role, team: team || null,
+            work_type: workType || "유지보수",
+            is_active: true,
+          };
+          if (/^\d{6}$/.test(pinRaw)) insertPayload.pin = pinRaw; // PIN 칸을 채워왔으면 등록과 동시에 반영
+          const { error } = await supabase.from("users").insert(insertPayload);
+          if (error) {
+            failed.push({ name, phone, reason: error.message });
+          } else {
+            success.push({ name, phone });
+            existingPhones.add(phone); // 같은 파일 안에서 중복 방지
+          }
+        }
+
+        setExcelUploadResults({ success, skipped, failed });
+        loadStaff();
+        loadStaffTeamMap();
+      } catch (e) {
+        console.error("엑셀 업로드 실패:", e);
+        alert("엑셀 파일을 읽는 중 오류가 발생했습니다. 제공된 양식 파일이 맞는지 확인해주세요.");
+      } finally {
+        setExcelUploading(false);
+      }
+    };
+
+    // 같은 엑셀 양식에서 전화번호 + PIN 열만 읽어서, 이미 등록된 직원들의 PIN을 한 번에 설정/변경
+    const handlePinExcelUpload = async (file) => {
+      if (!file) return;
+      setPinExcelUploading(true);
+      setPinExcelResults(null);
+      try {
+        const buf = await file.arrayBuffer();
+        const wb = XLSX.read(buf, { type: "array" });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+
+        const headerRowIdx = rows.findIndex(r => r.includes("이름") && r.includes("전화번호"));
+        if (headerRowIdx === -1) {
+          alert("양식을 찾을 수 없습니다. 제공된 엑셀 양식 그대로 사용해주세요.");
+          setPinExcelUploading(false);
+          return;
+        }
+        const header = rows[headerRowIdx];
+        const colIdx = {
+          name: header.indexOf("이름"),
+          phone: header.indexOf("전화번호"),
+          pin: header.findIndex(h => String(h).startsWith("PIN")),
+        };
+        if (colIdx.pin === -1) {
+          alert("이 파일에는 PIN 열이 없습니다. 제공된 최신 양식(PIN 열 포함)을 사용해주세요.");
+          setPinExcelUploading(false);
+          return;
+        }
+        const dataRows = rows.slice(headerRowIdx + 1);
+        const phoneToUser = new Map(staffList.map(s => [s.phone, s]));
+
+        const success = [], skipped = [], failed = [];
+        for (const row of dataRows) {
+          const name = String(row[colIdx.name] || "").trim();
+          const phoneRaw = String(row[colIdx.phone] || "").trim();
+          const pinRaw = String(row[colIdx.pin] || "").trim();
+          if (!name && !phoneRaw) continue;
+          if (name === "김철수" && phoneRaw.replace(/\D/g, "") === "01012345678") continue;
+          if (!pinRaw) continue; // PIN 칸이 비어있으면 그냥 건너뜀 (등록/역할 변경용 행일 수 있으므로)
+
+          const phone = phoneRaw.replace(/\D/g, "");
+          if (!/^\d{6}$/.test(pinRaw)) {
+            failed.push({ name, phone, reason: "PIN은 숫자 6자리여야 함" });
+            continue;
+          }
+          const target = phoneToUser.get(phone);
+          if (!target) {
+            skipped.push({ name, phone, reason: "등록되지 않은 번호" });
+            continue;
+          }
+          const { error } = await supabase.from("users").update({ pin: pinRaw }).eq("id", target.id);
+          if (error) failed.push({ name, phone, reason: error.message });
+          else success.push({ name: target.name, phone });
+        }
+
+        setPinExcelResults({ success, skipped, failed });
+        loadStaff();
+      } catch (e) {
+        console.error("PIN 엑셀 업로드 실패:", e);
+        alert("엑셀 파일을 읽는 중 오류가 발생했습니다.");
+      } finally {
+        setPinExcelUploading(false);
+      }
     };
 
     // 소속팀별로 묶어서 표시 — 팀 미지정은 "미지정"으로 그룹
@@ -3310,7 +3891,7 @@ export default function App() {
             <div style={{ fontSize: 11, color: "rgba(255,255,255,0.6)", marginTop: 3 }}>SK O&S 중대재해 대응</div>
           </div>
           {["사고 현황", "직원 관리", "사고 이력", "비상 연락망", "보고서 출력", "설정"].map(label => (
-            <div key={label} onClick={() => { if(label === "사고 현황" || label === "직원 관리" || label === "사고 이력") setSituationTab(label); }} style={{
+            <div key={label} onClick={() => { if(label === "사고 현황" || label === "직원 관리" || label === "사고 이력" || label === "보고서 출력" || label === "설정") setSituationTab(label); }} style={{
               padding: "10px 16px", fontSize: 13, cursor: "pointer",
               background: situationTab === label ? "rgba(255,255,255,0.15)" : "none",
               color: situationTab === label ? "#fff" : "rgba(255,255,255,0.6)",
@@ -3330,14 +3911,38 @@ export default function App() {
           {/* 상단바 */}
           <div style={{ padding: "12px 20px", background: "#fff", borderBottom: "1px solid #E2E8F0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div style={{ fontSize: 15, fontWeight: 700, color: "#111" }}>
-              {situationTab === "직원 관리" ? "직원 관리" : situationTab === "사고 이력" ? "사고 이력" : "실시간 사고 현황"}
+              {situationTab === "직원 관리" ? "직원 관리" : situationTab === "사고 이력" ? "사고 이력" : situationTab === "보고서 출력" ? "보고서 출력" : situationTab === "설정" ? "설정" : "실시간 사고 현황"}
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               {situationTab === "사고 현황" && (
                 <button onClick={loadSituationReports} style={{ fontSize: 12, padding: "4px 12px", cursor: "pointer" }}>새로고침</button>
               )}
               {situationTab === "직원 관리" && (
-                <button onClick={() => { setEditingStaffId(null); setNewStaff({ name: "", phone: "", role: "worker", team: "", work_type: "유지보수" }); setShowAddStaff(true); }} style={{ fontSize: 12, padding: "4px 12px", background: "#E53E3E", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", fontWeight: 700 }}>+ 직원 추가</button>
+                <>
+                  <a
+                    href="/직원_대량등록_양식.xlsx"
+                    download="직원_대량등록_양식.xlsx"
+                    style={{
+                      fontSize: 12, padding: "4px 12px", background: "#fff", color: "#555",
+                      border: "1px solid #E2E8F0", borderRadius: 6, textDecoration: "none", fontWeight: 700,
+                    }}
+                  >📥 양식 다운로드</a>
+                  <label style={{
+                    fontSize: 12, padding: "4px 12px", background: "#fff", color: "#2B6CB0",
+                    border: "1px solid #BEE3F8", borderRadius: 6, cursor: excelUploading ? "default" : "pointer",
+                    fontWeight: 700, opacity: excelUploading ? 0.5 : 1,
+                  }}>
+                    {excelUploading ? "업로드 중..." : "📤 엑셀로 일괄 등록"}
+                    <input
+                      type="file"
+                      accept=".xlsx,.xls"
+                      disabled={excelUploading}
+                      onChange={(e) => { const f = e.target.files?.[0]; if (f) handleExcelUpload(f); e.target.value = ""; }}
+                      style={{ display: "none" }}
+                    />
+                  </label>
+                  <button onClick={() => { setEditingStaffId(null); setNewStaff({ name: "", phone: "", role: "worker", team: "", work_type: "유지보수" }); setShowAddStaff(true); }} style={{ fontSize: 12, padding: "4px 12px", background: "#E53E3E", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", fontWeight: 700 }}>+ 직원 추가</button>
+                </>
               )}
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#38A169" }} />
@@ -3349,6 +3954,46 @@ export default function App() {
           {/* 직원 관리 탭 */}
           {situationTab === "직원 관리" && (
             <div style={{ flex: 1, overflowY: "auto", padding: 20 }}>
+              {/* 엑셀 업로드 결과 */}
+              {excelUploadResults && (
+                <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 12, padding: 16, marginBottom: 16 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: "#111" }}>📤 엑셀 업로드 결과</div>
+                    <button onClick={() => setExcelUploadResults(null)} style={{ background: "none", border: "none", color: "#aaa", cursor: "pointer", fontSize: 12 }}>닫기 ✕</button>
+                  </div>
+                  <div style={{ display: "flex", gap: 16, marginBottom: 10, fontSize: 13 }}>
+                    <span style={{ color: "#276749", fontWeight: 700 }}>✅ 등록 완료 {excelUploadResults.success.length}명</span>
+                    <span style={{ color: "#B7791F", fontWeight: 700 }}>⏭ 건너뜀 {excelUploadResults.skipped.length}명</span>
+                    <span style={{ color: "#C53030", fontWeight: 700 }}>⚠️ 실패 {excelUploadResults.failed.length}명</span>
+                  </div>
+                  {excelUploadResults.success.length > 0 && (
+                    <div style={{ marginBottom: 10, fontSize: 12, color: "#276749" }}>
+                      💡 지금 등록된 직원들은 아직 PIN이 없어요. <strong>설정 → PIN 일괄 발급</strong>에서 한 번에 발급해주세요.
+                    </div>
+                  )}
+                  {(excelUploadResults.skipped.length > 0 || excelUploadResults.failed.length > 0) && (
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                      <thead>
+                        <tr style={{ borderBottom: "1px solid #E2E8F0" }}>
+                          <th style={{ padding: "4px 8px", textAlign: "left", color: "#888" }}>이름</th>
+                          <th style={{ padding: "4px 8px", textAlign: "left", color: "#888" }}>전화번호</th>
+                          <th style={{ padding: "4px 8px", textAlign: "left", color: "#888" }}>사유</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[...excelUploadResults.skipped, ...excelUploadResults.failed].map((r, i) => (
+                          <tr key={i}>
+                            <td style={{ padding: "4px 8px" }}>{r.name}</td>
+                            <td style={{ padding: "4px 8px", color: "#888" }}>{r.phone}</td>
+                            <td style={{ padding: "4px 8px", color: "#C53030" }}>{r.reason}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              )}
+
               {/* 직원 추가 폼 */}
               {showAddStaff && (
                 <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 12, padding: 16, marginBottom: 16 }}>
@@ -3379,8 +4024,12 @@ export default function App() {
                       <select value={newStaff.work_type} onChange={e => setNewStaff(p => ({...p, work_type: e.target.value}))} style={{ width: "100%", padding: "8px 10px", border: "1px solid #E2E8F0", borderRadius: 6, fontSize: 13 }}>
                         <option value="유지보수">유지보수</option>
                         <option value="운용투자">운용투자</option>
+                        <option value="전체">전체</option>
                       </select>
                     </div>
+                  </div>
+                  <div style={{ fontSize: 11, color: "#888", marginBottom: 10 }}>
+                    💡 PIN 번호는 여기서 설정하지 않아요. 등록 후 "설정" 메뉴에서 발급/관리합니다.
                   </div>
                   <div style={{ display: "flex", gap: 8 }}>
                     <button onClick={() => { setShowAddStaff(false); setEditingStaffId(null); setNewStaff({ name: "", phone: "", role: "worker", team: "", work_type: "유지보수" }); }} style={{ padding: "8px 16px", border: "1px solid #ddd", borderRadius: 6, fontSize: 13, cursor: "pointer", background: "#fff" }}>취소</button>
@@ -3395,11 +4044,22 @@ export default function App() {
                   직원을 불러오는 중...
                 </div>
               ) : (
-                Object.entries(staffByTeam).map(([team, members]) => (
+                Object.entries(staffByTeam).map(([team, members]) => {
+                  const isCollapsed = !!collapsedStaffTeams[team];
+                  return (
                   <div key={team} style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 12, overflow: "hidden", marginBottom: 14 }}>
-                    <div style={{ padding: "10px 14px", background: "#F7FAFC", borderBottom: "1px solid #E2E8F0", fontSize: 13, fontWeight: 700, color: "#111" }}>
-                      🏷️ {team} <span style={{ color: "#888", fontWeight: 400 }}>({members.length}명)</span>
+                    <div
+                      onClick={() => setCollapsedStaffTeams(prev => ({ ...prev, [team]: !prev[team] }))}
+                      style={{
+                        padding: "10px 14px", background: "#F7FAFC", borderBottom: isCollapsed ? "none" : "1px solid #E2E8F0",
+                        fontSize: 13, fontWeight: 700, color: "#111", cursor: "pointer",
+                        display: "flex", alignItems: "center", justifyContent: "space-between", userSelect: "none",
+                      }}
+                    >
+                      <span>🏷️ {team} <span style={{ color: "#888", fontWeight: 400 }}>({members.length}명)</span></span>
+                      <span style={{ color: "#888", fontSize: 11, transform: isCollapsed ? "rotate(-90deg)" : "none", display: "inline-block", transition: "transform 0.15s" }}>▼</span>
                     </div>
+                    {!isCollapsed && (
                     <table style={{ width: "100%", borderCollapse: "collapse" }}>
                       <thead>
                         <tr style={{ borderBottom: "1px solid #E2E8F0" }}>
@@ -3441,13 +4101,19 @@ export default function App() {
                                 onClick={() => handleSetStaffActive(s.id, false)}
                                 style={{ fontSize: 11, padding: "3px 10px", background: "#FFF5F5", color: "#C53030", border: "1px solid #FED7D7", borderRadius: 6, cursor: !s.is_active ? "default" : "pointer", opacity: !s.is_active ? 0.4 : 1 }}
                               >비활성화</button>
+                              <button
+                                onClick={() => handleDeleteStaffMember(s)}
+                                style={{ fontSize: 11, padding: "3px 10px", background: "#fff", color: "#888", border: "1px solid #E2E8F0", borderRadius: 6, cursor: "pointer" }}
+                              >삭제</button>
                             </td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
+                    )}
                   </div>
-                ))
+                  );
+                })
               )}
             </div>
           )}
@@ -3455,11 +4121,35 @@ export default function App() {
           {/* 사고 이력 탭 — 삭제된 사고도 포함해서 전체 기록 조회 */}
           {situationTab === "사고 이력" && (
             <div style={{ flex: 1, overflowY: "auto", padding: 20 }}>
+              <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+                <button
+                  disabled={Object.values(selectedHistoryIds).filter(Boolean).length === 0}
+                  onClick={handleBulkPermanentDelete}
+                  style={{
+                    background: "#C53030", color: "#fff", border: "none", borderRadius: 8,
+                    fontSize: 13, fontWeight: 700, padding: "8px 16px",
+                    cursor: Object.values(selectedHistoryIds).filter(Boolean).length === 0 ? "default" : "pointer",
+                    opacity: Object.values(selectedHistoryIds).filter(Boolean).length === 0 ? 0.4 : 1,
+                  }}
+                >🗑️ 선택 삭제 ({Object.values(selectedHistoryIds).filter(Boolean).length})</button>
+              </div>
               <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 12, overflow: "hidden" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead>
                     <tr style={{ background: "#F7FAFC", borderBottom: "1px solid #E2E8F0" }}>
-                      {["사고 일시", "유형", "장소", "작업자", "상태", "관리"].map(h => (
+                      <th style={{ padding: "10px 14px", width: 36 }}>
+                        <input
+                          type="checkbox"
+                          checked={accidentReports.length > 0 && accidentReports.every(a => selectedHistoryIds[a.id])}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            const next = {};
+                            if (checked) accidentReports.forEach(a => { next[a.id] = true; });
+                            setSelectedHistoryIds(next);
+                          }}
+                        />
+                      </th>
+                      {["사고 일시", "유형", "장소", "작업자", "상태"].map(h => (
                         <th key={h} style={{ padding: "10px 14px", fontSize: 12, fontWeight: 700, color: "#888", textAlign: "left" }}>{h}</th>
                       ))}
                     </tr>
@@ -3472,6 +4162,13 @@ export default function App() {
                         .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
                         .map((acc, i) => (
                           <tr key={acc.id} style={{ borderBottom: "1px solid #F7F7F7", background: i % 2 === 0 ? "#fff" : "#FAFAFA", opacity: acc.is_deleted ? 0.5 : 1 }}>
+                            <td style={{ padding: "10px 14px" }}>
+                              <input
+                                type="checkbox"
+                                checked={!!selectedHistoryIds[acc.id]}
+                                onChange={(e) => setSelectedHistoryIds(prev => ({ ...prev, [acc.id]: e.target.checked }))}
+                              />
+                            </td>
                             <td style={{ padding: "10px 14px", fontSize: 13, color: "#555" }}>{acc.created_at ? new Date(acc.created_at).toLocaleString("ko-KR") : "-"}</td>
                             <td style={{ padding: "10px 14px", fontSize: 13, fontWeight: 700, color: "#111" }}>{acc.accident_type}{acc.is_deleted && <span style={{ marginLeft: 6, fontSize: 10, color: "#C53030", fontWeight: 700 }}>(삭제됨)</span>}</td>
                             <td style={{ padding: "10px 14px", fontSize: 13, color: "#555" }}>{acc.location}</td>
@@ -3483,12 +4180,77 @@ export default function App() {
                                 color: acc.status === "완료" ? "#276749" : "#C53030",
                               }}>{acc.status || "진행중"}</span>
                             </td>
+                          </tr>
+                        ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* 보고서 출력 탭 — 체크한 사고들을 한 번에 .docx로 생성/다운로드 */}
+          {situationTab === "보고서 출력" && (
+            <div style={{ flex: 1, overflowY: "auto", padding: 20 }}>
+              <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+                <button
+                  disabled={Object.values(selectedReportIds).filter(Boolean).length === 0 || !!bulkReportProgress}
+                  onClick={handleBulkGenerateReports}
+                  style={{
+                    background: "#1A365D", color: "#fff", border: "none", borderRadius: 8,
+                    fontSize: 13, fontWeight: 700, padding: "8px 16px",
+                    cursor: (Object.values(selectedReportIds).filter(Boolean).length === 0 || bulkReportProgress) ? "default" : "pointer",
+                    opacity: (Object.values(selectedReportIds).filter(Boolean).length === 0 || bulkReportProgress) ? 0.4 : 1,
+                  }}
+                >📄 {bulkReportProgress ? `생성 중... (${bulkReportProgress.current}/${bulkReportProgress.total})` : `선택 항목 보고서 출력 (${Object.values(selectedReportIds).filter(Boolean).length})`}</button>
+              </div>
+              <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 12, overflow: "hidden" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr style={{ background: "#F7FAFC", borderBottom: "1px solid #E2E8F0" }}>
+                      <th style={{ padding: "10px 14px", width: 36 }}>
+                        <input
+                          type="checkbox"
+                          checked={accidentReports.filter(a => !a.is_deleted).length > 0 && accidentReports.filter(a => !a.is_deleted).every(a => selectedReportIds[a.id])}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            const next = {};
+                            if (checked) accidentReports.filter(a => !a.is_deleted).forEach(a => { next[a.id] = true; });
+                            setSelectedReportIds(next);
+                          }}
+                        />
+                      </th>
+                      {["사고 일시", "유형", "장소", "작업자", "상태"].map(h => (
+                        <th key={h} style={{ padding: "10px 14px", fontSize: 12, fontWeight: 700, color: "#888", textAlign: "left" }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {accidentReports.filter(a => !a.is_deleted).length === 0 ? (
+                      <tr><td colSpan={6} style={{ padding: "20px", textAlign: "center", color: "#aaa", fontSize: 13 }}>사고 기록이 없습니다.</td></tr>
+                    ) : (
+                      [...accidentReports]
+                        .filter(a => !a.is_deleted)
+                        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+                        .map((acc, i) => (
+                          <tr key={acc.id} style={{ borderBottom: "1px solid #F7F7F7", background: i % 2 === 0 ? "#fff" : "#FAFAFA" }}>
                             <td style={{ padding: "10px 14px" }}>
-                              <button
-                                onClick={() => handlePermanentlyDeleteAccident(acc.id)}
-                                title="영구 삭제"
-                                style={{ background: "#FFF5F5", border: "1px solid #FED7D7", borderRadius: 6, color: "#C53030", fontSize: 12, padding: "4px 10px", cursor: "pointer" }}
-                              >🗑️ 영구 삭제</button>
+                              <input
+                                type="checkbox"
+                                checked={!!selectedReportIds[acc.id]}
+                                onChange={(e) => setSelectedReportIds(prev => ({ ...prev, [acc.id]: e.target.checked }))}
+                              />
+                            </td>
+                            <td style={{ padding: "10px 14px", fontSize: 13, color: "#555" }}>{acc.created_at ? new Date(acc.created_at).toLocaleString("ko-KR") : "-"}</td>
+                            <td style={{ padding: "10px 14px", fontSize: 13, fontWeight: 700, color: "#111" }}>{acc.accident_type}</td>
+                            <td style={{ padding: "10px 14px", fontSize: 13, color: "#555" }}>{acc.location}</td>
+                            <td style={{ padding: "10px 14px", fontSize: 13, color: "#555" }}>{staffTeamMap[acc.worker_name] ? staffTeamMap[acc.worker_name] + " · " : ""}{acc.worker_name}</td>
+                            <td style={{ padding: "10px 14px" }}>
+                              <span style={{
+                                fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 10,
+                                background: acc.status === "완료" ? "#F0FFF4" : "#FFF5F5",
+                                color: acc.status === "완료" ? "#276749" : "#C53030",
+                              }}>{acc.status || "진행중"}</span>
                             </td>
                           </tr>
                         ))
@@ -3499,7 +4261,185 @@ export default function App() {
             </div>
           )}
 
-          {/* 사고 현황 탭 */}
+          {/* 설정 탭 — 관리자 비밀번호로 잠긴 PIN 관리 도구 */}
+          {situationTab === "설정" && (
+            <div style={{ flex: 1, overflowY: "auto", padding: 20 }}>
+              {!settingsUnlocked ? (
+                <div style={{ maxWidth: 340, margin: "60px auto 0", background: "#fff", border: "1px solid #E2E8F0", borderRadius: 12, padding: 24, textAlign: "center" }}>
+                  <div style={{ fontSize: 28, marginBottom: 10 }}>🔒</div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: "#111", marginBottom: 6 }}>관리자 전용</div>
+                  <div style={{ fontSize: 12, color: "#888", marginBottom: 16 }}>PIN 관리 기능은 관리자 비밀번호가 필요합니다.</div>
+                  <input
+                    type="password"
+                    value={settingsPasswordInput}
+                    onChange={(e) => { setSettingsPasswordInput(e.target.value); setSettingsPasswordError(""); }}
+                    onKeyDown={(e) => {
+                      if (e.key !== "Enter") return;
+                      if (settingsPasswordInput === ADMIN_SETTINGS_PASSWORD) { setSettingsUnlocked(true); setSettingsPasswordInput(""); }
+                      else setSettingsPasswordError("비밀번호가 일치하지 않습니다.");
+                    }}
+                    placeholder="관리자 비밀번호"
+                    style={{ width: "100%", padding: "10px 12px", border: "1px solid #E2E8F0", borderRadius: 8, fontSize: 14, marginBottom: 10, boxSizing: "border-box", textAlign: "center" }}
+                  />
+                  {settingsPasswordError && <div style={{ fontSize: 12, color: "#C53030", marginBottom: 10 }}>⚠️ {settingsPasswordError}</div>}
+                  <button
+                    onClick={() => {
+                      if (settingsPasswordInput === ADMIN_SETTINGS_PASSWORD) { setSettingsUnlocked(true); setSettingsPasswordInput(""); }
+                      else setSettingsPasswordError("비밀번호가 일치하지 않습니다.");
+                    }}
+                    style={{ width: "100%", padding: "10px", background: "#1A365D", color: "#fff", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer" }}
+                  >확인</button>
+                </div>
+              ) : (
+                <>
+                  <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 12, padding: 20, marginBottom: 16, position: "relative" }}>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: "#111", marginBottom: 6 }}>🔑 개별 PIN 설정</div>
+                    <div style={{ fontSize: 13, color: "#888", marginBottom: 14, lineHeight: 1.6 }}>
+                      직원을 이름으로 검색해서 선택한 다음, 원하는 PIN(6자리)을 직접 입력해 설정합니다.
+                    </div>
+                    <div style={{ position: "relative" }}>
+                      <input
+                        value={resetPinSearch}
+                        onChange={(e) => {
+                          setResetPinSearch(e.target.value);
+                          setResetPinTargetId("");
+                          setResetPinDropdownOpen(true);
+                        }}
+                        onFocus={() => setResetPinDropdownOpen(true)}
+                        placeholder="이름으로 검색..."
+                        style={{ width: "100%", padding: "9px 10px", border: "1px solid #E2E8F0", borderRadius: 8, fontSize: 13, boxSizing: "border-box" }}
+                      />
+                      {resetPinDropdownOpen && resetPinSearch && (
+                        <div style={{
+                          position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 10,
+                          background: "#fff", border: "1px solid #E2E8F0", borderRadius: 8,
+                          maxHeight: 220, overflowY: "auto", boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+                        }}>
+                          {staffList.filter(s => s.is_active && s.name.includes(resetPinSearch)).length === 0 ? (
+                            <div style={{ padding: "10px 12px", fontSize: 12, color: "#aaa" }}>일치하는 직원이 없습니다.</div>
+                          ) : (
+                            staffList.filter(s => s.is_active && s.name.includes(resetPinSearch)).map(s => (
+                              <div
+                                key={s.id}
+                                onClick={() => {
+                                  setResetPinTargetId(s.id);
+                                  setResetPinSearch(s.name);
+                                  setResetPinDropdownOpen(false);
+                                }}
+                                style={{ padding: "9px 12px", fontSize: 13, cursor: "pointer", borderBottom: "1px solid #F7F7F7" }}
+                                onMouseDown={(e) => e.preventDefault()}
+                              >
+                                <span style={{ fontWeight: 700 }}>{s.name}</span>
+                                <span style={{ color: "#888", marginLeft: 6 }}>({s.team || "미지정"} · {ROLE_LABEL[s.role]})</span>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ display: "flex", gap: 8, marginTop: 10, alignItems: "center" }}>
+                      <input
+                        value={manualPinInput}
+                        onChange={(e) => setManualPinInput(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                        placeholder="직접 PIN 입력 (6자리)"
+                        inputMode="numeric"
+                        maxLength={6}
+                        style={{ flex: 1, padding: "9px 10px", border: "1px solid #E2E8F0", borderRadius: 8, fontSize: 13, boxSizing: "border-box" }}
+                      />
+                      <button
+                        disabled={!resetPinTargetId || !/^\d{6}$/.test(manualPinInput)}
+                        onClick={async () => {
+                          const target = staffList.find(s => s.id === resetPinTargetId);
+                          if (!target) return;
+                          const { error } = await supabase.from("users").update({ pin: manualPinInput }).eq("id", target.id);
+                          if (error) { alert("PIN 설정에 실패했습니다: " + error.message); return; }
+                          alert(`${target.name}님의 PIN이 ${manualPinInput}(으)로 설정되었습니다.`);
+                          setManualPinInput("");
+                          setResetPinTargetId("");
+                          setResetPinSearch("");
+                          loadStaff();
+                        }}
+                        style={{
+                          background: "#EBF8FF", color: "#2B6CB0", border: "1px solid #BEE3F8", borderRadius: 8,
+                          fontSize: 13, fontWeight: 700, padding: "9px 16px",
+                          cursor: (resetPinTargetId && /^\d{6}$/.test(manualPinInput)) ? "pointer" : "default",
+                          opacity: (resetPinTargetId && /^\d{6}$/.test(manualPinInput)) ? 1 : 0.4,
+                        }}
+                      >직접 설정</button>
+                    </div>
+                    <div style={{ fontSize: 11, color: "#aaa", marginTop: 6 }}>
+                      💡 위에서 직원을 먼저 검색·선택한 다음, 원하는 PIN을 입력하고 "직접 설정"을 누르세요.
+                    </div>
+                  </div>
+
+                  <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 12, padding: 20, marginBottom: 16 }}>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: "#111", marginBottom: 6 }}>📤 엑셀로 PIN 일괄 설정</div>
+                    <div style={{ fontSize: 13, color: "#888", marginBottom: 14, lineHeight: 1.6 }}>
+                      직원 등록 때 쓰는 것과 같은 엑셀 양식에서 "전화번호"와 "PIN" 열만 읽어옵니다.
+                      이미 등록된 직원의 전화번호와 매칭해서 PIN을 그 값으로 설정/변경합니다. (PIN 칸이 비어있는 행은 건너뜁니다)
+                    </div>
+                    <label style={{
+                      display: "inline-block", fontSize: 13, padding: "9px 16px",
+                      background: pinExcelUploading ? "#F7FAFC" : "#1A365D",
+                      color: pinExcelUploading ? "#aaa" : "#fff",
+                      border: "none", borderRadius: 8, fontWeight: 700,
+                      cursor: pinExcelUploading ? "default" : "pointer",
+                      marginRight: 8,
+                    }}>
+                      {pinExcelUploading ? "처리 중..." : "엑셀 파일 선택"}
+                      <input
+                        type="file"
+                        accept=".xlsx,.xls"
+                        disabled={pinExcelUploading}
+                        onChange={(e) => { const f = e.target.files?.[0]; if (f) handlePinExcelUpload(f); e.target.value = ""; }}
+                        style={{ display: "none" }}
+                      />
+                    </label>
+                    <a
+                      href="/직원_대량등록_양식.xlsx"
+                      download="직원_대량등록_양식.xlsx"
+                      style={{
+                        display: "inline-block", fontSize: 13, padding: "9px 16px",
+                        background: "#fff", color: "#555", border: "1px solid #E2E8F0",
+                        borderRadius: 8, fontWeight: 700, textDecoration: "none",
+                      }}
+                    >📥 양식 다운로드</a>
+
+                    {pinExcelResults && (
+                      <div style={{ marginTop: 14 }}>
+                        <div style={{ display: "flex", gap: 16, marginBottom: 8, fontSize: 13 }}>
+                          <span style={{ color: "#276749", fontWeight: 700 }}>✅ 설정 완료 {pinExcelResults.success.length}명</span>
+                          <span style={{ color: "#B7791F", fontWeight: 700 }}>⏭ 건너뜀 {pinExcelResults.skipped.length}명</span>
+                          <span style={{ color: "#C53030", fontWeight: 700 }}>⚠️ 실패 {pinExcelResults.failed.length}명</span>
+                        </div>
+                        {(pinExcelResults.skipped.length > 0 || pinExcelResults.failed.length > 0) && (
+                          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                            <thead>
+                              <tr style={{ borderBottom: "1px solid #E2E8F0" }}>
+                                <th style={{ padding: "4px 8px", textAlign: "left", color: "#888" }}>이름</th>
+                                <th style={{ padding: "4px 8px", textAlign: "left", color: "#888" }}>전화번호</th>
+                                <th style={{ padding: "4px 8px", textAlign: "left", color: "#888" }}>사유</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {[...pinExcelResults.skipped, ...pinExcelResults.failed].map((r, i) => (
+                                <tr key={i}>
+                                  <td style={{ padding: "4px 8px" }}>{r.name}</td>
+                                  <td style={{ padding: "4px 8px", color: "#888" }}>{r.phone}</td>
+                                  <td style={{ padding: "4px 8px", color: "#C53030" }}>{r.reason}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
           {situationTab === "사고 현황" && (
             <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
               {/* 사고 목록 */}
@@ -3574,62 +4514,131 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* 조치 지시 — 상급자와 동일하게 상황실에서도 직접 지시 가능 */}
+                {/* 상황실 공유 — TBM 확인 / 피재자 상태 확인 / 추가 공유 (작업자·상급자 화면에 동시 전달) */}
                 <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 12, padding: 14 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: "#111", marginBottom: 10 }}>🚨 조치 지시</div>
-                  {SITUATION_DIRECTIVES.map(item => {
-                    const done = !!directiveStatus[item.key];
-                    return (
-                      <div key={item.key} style={{
-                        display: "flex", alignItems: "center", justifyContent: "space-between",
-                        padding: "8px 0", borderBottom: "1px solid #F7F7F7",
-                      }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <span style={{ fontSize: 15 }}>{item.icon}</span>
-                          <span style={{ fontSize: 13, color: "#333" }}>{item.label}</span>
-                        </div>
-                        <button
-                          disabled={!selectedAccident || done}
-                          onClick={() => handleSituationDirective(item)}
-                          style={{
-                            background: done ? "#F0FFF4" : "#fff",
-                            border: `1px solid ${done ? "#9AE6B4" : "#FCA5A5"}`,
-                            borderRadius: 6, padding: "4px 10px", fontSize: 12,
-                            color: done ? "#2F855A" : "#C53030",
-                            cursor: done || !selectedAccident ? "default" : "pointer", fontWeight: 600,
-                          }}
-                        >{done ? "✓ 완료" : "지시하기"}</button>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#111", marginBottom: 10 }}>📣 현장 공유</div>
+                  <div style={{ display: "flex", gap: 8, marginBottom: situationShareType ? 12 : 0 }}>
+                    {SITUATION_SHARE_TYPES.map(t => (
+                      <button
+                        key={t.key}
+                        disabled={!selectedAccident}
+                        onClick={() => { setSituationShareType(t.key); setSituationShareText(""); setSituationSharePhoto(null); }}
+                        style={{
+                          flex: 1, padding: "10px 6px", borderRadius: 8, fontSize: 12, fontWeight: 700,
+                          cursor: selectedAccident ? "pointer" : "default",
+                          background: situationShareType === t.key ? "#EBF8FF" : "#F7FAFC",
+                          border: `1px solid ${situationShareType === t.key ? "#2B6CB0" : "#E2E8F0"}`,
+                          color: situationShareType === t.key ? "#2B6CB0" : "#444",
+                          opacity: selectedAccident ? 1 : 0.5,
+                        }}
+                      >{t.icon} {t.label}</button>
+                    ))}
+                  </div>
+
+                  {situationShareType && (
+                    <div style={{ background: "#F7FAFC", borderRadius: 8, padding: 10 }}>
+                      <textarea
+                        value={situationShareText}
+                        onChange={(e) => setSituationShareText(e.target.value)}
+                        placeholder={`${SITUATION_SHARE_TYPES.find(t => t.key === situationShareType)?.label} 내용을 입력하세요`}
+                        style={{
+                          width: "100%", minHeight: 70, padding: "8px 10px", border: "1px solid #E2E8F0",
+                          borderRadius: 6, fontSize: 13, resize: "vertical", boxSizing: "border-box",
+                          fontFamily: "inherit", outline: "none", marginBottom: 8,
+                        }}
+                      />
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                        <label style={{
+                          fontSize: 12, padding: "6px 10px", background: "#fff", border: "1px solid #E2E8F0",
+                          borderRadius: 6, cursor: "pointer", color: "#444",
+                        }}>
+                          📷 사진 첨부
+                          <input
+                            type="file" accept="image/*" style={{ display: "none" }}
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              if (f) setSituationSharePhoto({ file: f, previewUrl: URL.createObjectURL(f) });
+                            }}
+                          />
+                        </label>
+                        {situationSharePhoto && (
+                          <div style={{ position: "relative" }}>
+                            <img src={situationSharePhoto.previewUrl} alt="첨부 미리보기" style={{ width: 40, height: 40, objectFit: "cover", borderRadius: 6, border: "1px solid #E2E8F0" }} />
+                            <button
+                              onClick={() => setSituationSharePhoto(null)}
+                              style={{ position: "absolute", top: -6, right: -6, width: 18, height: 18, borderRadius: "50%", background: "#C53030", color: "#fff", border: "none", fontSize: 11, cursor: "pointer", lineHeight: "18px", padding: 0 }}
+                            >×</button>
+                          </div>
+                        )}
                       </div>
-                    );
-                  })}
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <button
+                          onClick={() => { setSituationShareType(null); setSituationShareText(""); setSituationSharePhoto(null); }}
+                          style={{ flex: 1, padding: "9px", background: "#fff", border: "1px solid #E2E8F0", borderRadius: 6, fontSize: 12, cursor: "pointer", color: "#666" }}
+                        >취소</button>
+                        <button
+                          disabled={situationShareSending}
+                          onClick={handleSendSituationShare}
+                          style={{ flex: 2, padding: "9px", background: "#2B6CB0", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 700, color: "#fff", cursor: situationShareSending ? "default" : "pointer", opacity: situationShareSending ? 0.6 : 1 }}
+                        >{situationShareSending ? "전송 중..." : "전송 (작업자·상급자에게 전달)"}</button>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* 출동 지정 */}
                 <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 12, padding: 14 }}>
                   <div style={{ fontSize: 13, fontWeight: 700, color: "#111", marginBottom: 10 }}>출동 지정</div>
-                  {staffList.filter(s => s.role === "situation" && s.is_active).length === 0 ? (
-                    <div style={{ fontSize: 12, color: "#aaa", padding: "10px 0" }}>
-                      등록된 상황실 직원이 없습니다. "직원 관리"에서 역할을 "상황실"로 추가해주세요.
-                    </div>
-                  ) : (
-                    staffList.filter(s => s.role === "situation" && s.is_active).map(m => (
-                      <div key={m.id} onClick={() => !dispatchedMembers[m.id] && setSelectedMember(m)} style={{
-                        display: "flex", alignItems: "center", justifyContent: "space-between",
-                        padding: "8px 10px", borderRadius: 8, cursor: dispatchedMembers[m.id] ? "default" : "pointer",
-                        border: "1px solid " + (selectedMember?.id === m.id ? "#2B6CB0" : dispatchedMembers[m.id] ? "#9AE6B4" : "#E2E8F0"),
-                        background: selectedMember?.id === m.id ? "#EBF8FF" : dispatchedMembers[m.id] ? "#F0FFF4" : "#fff",
-                        marginBottom: 6,
-                      }}>
-                        <div>
-                          <div style={{ fontSize: 13, fontWeight: 700, color: "#111" }}>{m.name}</div>
-                          <div style={{ fontSize: 11, color: "#888" }}>{m.team ? m.team + " · " : ""}{m.phone}</div>
-                        </div>
-                        <span style={{ fontSize: 12, fontWeight: 700, color: dispatchedMembers[m.id] ? "#276749" : selectedMember?.id === m.id ? "#2B6CB0" : "#aaa" }}>
-                          {dispatchedMembers[m.id] ? "출동중" : selectedMember?.id === m.id ? "선택됨" : "클릭하여 선택"}
-                        </span>
-                      </div>
-                    ))
-                  )}
+                  {(() => {
+                    const dispatchable = staffList.filter(s => s.role === "situation" && s.is_active);
+                    const teamOptions = ["전체", ...Array.from(new Set(dispatchable.map(s => s.team).filter(Boolean)))];
+                    const filtered = dispatchTeamFilter === "전체" ? dispatchable : dispatchable.filter(s => s.team === dispatchTeamFilter);
+                    return (
+                      <>
+                        {teamOptions.length > 1 && (
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+                            {teamOptions.map(team => (
+                              <button
+                                key={team}
+                                onClick={() => setDispatchTeamFilter(team)}
+                                style={{
+                                  padding: "4px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700, cursor: "pointer",
+                                  background: dispatchTeamFilter === team ? "#2B6CB0" : "#F7FAFC",
+                                  color: dispatchTeamFilter === team ? "#fff" : "#555",
+                                  border: `1px solid ${dispatchTeamFilter === team ? "#2B6CB0" : "#E2E8F0"}`,
+                                }}
+                              >{team}</button>
+                            ))}
+                          </div>
+                        )}
+                        {filtered.length === 0 ? (
+                          <div style={{ fontSize: 12, color: "#aaa", padding: "10px 0" }}>
+                            {dispatchable.length === 0
+                              ? '등록된 상황실 직원이 없습니다. "직원 관리"에서 역할을 "상황실"로 추가해주세요.'
+                              : "해당 팀에 등록된 직원이 없습니다."}
+                          </div>
+                        ) : (
+                          filtered.map(m => (
+                            <div key={m.id} onClick={() => !dispatchedMembers[m.id] && setSelectedMember(m)} style={{
+                              display: "flex", alignItems: "center", justifyContent: "space-between",
+                              padding: "8px 10px", borderRadius: 8, cursor: dispatchedMembers[m.id] ? "default" : "pointer",
+                              border: "1px solid " + (selectedMember?.id === m.id ? "#2B6CB0" : dispatchedMembers[m.id] ? "#9AE6B4" : "#E2E8F0"),
+                              background: selectedMember?.id === m.id ? "#EBF8FF" : dispatchedMembers[m.id] ? "#F0FFF4" : "#fff",
+                              marginBottom: 6,
+                            }}>
+                              <div>
+                                <div style={{ fontSize: 13, fontWeight: 700, color: "#111" }}>{m.name}</div>
+                                <div style={{ fontSize: 11, color: "#888" }}>{m.team ? m.team + " · " : ""}{m.phone}</div>
+                              </div>
+                              <span style={{ fontSize: 12, fontWeight: 700, color: dispatchedMembers[m.id] ? "#276749" : selectedMember?.id === m.id ? "#2B6CB0" : "#aaa" }}>
+                                {dispatchedMembers[m.id] ? "출동" : selectedMember?.id === m.id ? "선택됨" : "클릭하여 선택"}
+                              </span>
+                            </div>
+                          ))
+                        )}
+                      </>
+                    );
+                  })()}
                   {selectedMember && (
                     <div style={{ marginTop: 10, padding: 12, background: "#EBF8FF", borderRadius: 8, border: "1px solid #90CDF4" }}>
                       <div style={{ fontSize: 12, fontWeight: 700, color: "#2B6CB0", marginBottom: 10 }}>{selectedMember.name} 출동 설정</div>
@@ -3659,15 +4668,7 @@ export default function App() {
                   {tlEvents.length === 0 ? (
                     <div style={{ textAlign: "center", color: "#aaa", fontSize: 13 }}>아직 기록 없음</div>
                   ) : (
-                    tlEvents.map((ev, i) => (
-                      <div key={i} style={{ display: "flex", gap: 10, marginBottom: 10, alignItems: "flex-start" }}>
-                        <div style={{ width: 8, height: 8, borderRadius: "50%", background: ev.color, flexShrink: 0, marginTop: 4 }} />
-                        <div>
-                          <span style={{ fontSize: 11, fontWeight: 700, color: "#2B6CB0", marginRight: 6 }}>{ev.time}</span>
-                          <span style={{ fontSize: 12, color: "#111" }}>{ev.text}</span>
-                        </div>
-                      </div>
-                    ))
+                    tlEvents.map(renderTimelineEvent)
                   )}
                 </div>
               </div>
