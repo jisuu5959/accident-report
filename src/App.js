@@ -989,8 +989,10 @@ export default function App() {
 
   const styles = {
     phone: {
-      width: 375,
-      minHeight: 812,
+      width: "100%",
+      maxWidth: 480, // 큰 화면(태블릿/PC)에서는 이 폭으로 제한, 그 이하 폰에서는 화면 꽉 채움
+      minHeight: "100dvh", // 실제 기기 화면 높이에 맞춤 (동적 뷰포트 높이 - 모바일 브라우저 주소창 영향 최소화)
+      margin: "0 auto", // 화면이 maxWidth보다 넓을 때 가운데 정렬
       background: "#fff",
       fontFamily: "'Pretendard', 'Apple SD Gothic Neo', sans-serif",
       display: "flex",
